@@ -4,12 +4,12 @@ import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer
 // Shader imports
 import positionFragment from '../glsl/boids/position.frag?raw'
 import velocityFragment from '../glsl/boids/velocity.frag?raw'
-import extraFragment from '../glsl/boids/extra.frag?raw'
 
 export class GPGPUSimulation {
-  constructor(renderer, config) {
+  constructor(renderer, config, groupIds = null) {
     this.renderer = renderer
     this.config = config
+    this.groupIds = groupIds
 
     // Texture size (must be power of 2)
     this.textureSize = Math.ceil(Math.sqrt(config.boidCount))
@@ -19,7 +19,6 @@ export class GPGPUSimulation {
     // Variables
     this.positionVariable = null
     this.velocityVariable = null
-    this.extraVariable = null
   }
 
   init() {
@@ -38,12 +37,10 @@ export class GPGPUSimulation {
     // Create initial textures
     const positionTexture = this.gpuCompute.createTexture()
     const velocityTexture = this.gpuCompute.createTexture()
-    const extraTexture = this.gpuCompute.createTexture()
 
     // Fill textures with initial data
     this.fillPositionTexture(positionTexture)
     this.fillVelocityTexture(velocityTexture)
-    this.fillExtraTexture(extraTexture)
 
     // Add variables
     this.positionVariable = this.gpuCompute.addVariable(
@@ -58,35 +55,20 @@ export class GPGPUSimulation {
       velocityTexture
     )
 
-    this.extraVariable = this.gpuCompute.addVariable(
-      'textureExtra',
-      extraFragment,
-      extraTexture
-    )
-
-    // Set dependencies (each variable can read all textures)
+    // Set dependencies
     this.gpuCompute.setVariableDependencies(this.positionVariable, [
       this.positionVariable,
       this.velocityVariable,
-      this.extraVariable,
     ])
 
     this.gpuCompute.setVariableDependencies(this.velocityVariable, [
       this.positionVariable,
       this.velocityVariable,
-      this.extraVariable,
-    ])
-
-    this.gpuCompute.setVariableDependencies(this.extraVariable, [
-      this.positionVariable,
-      this.velocityVariable,
-      this.extraVariable,
     ])
 
     // Add uniforms
     this.addUniforms(this.positionVariable)
     this.addUniforms(this.velocityVariable)
-    this.addUniforms(this.extraVariable)
 
     // Initialize
     const error = this.gpuCompute.init()
@@ -97,37 +79,41 @@ export class GPGPUSimulation {
 
   fillPositionTexture(texture) {
     const data = texture.image.data
-    const bounds = this.config.bounds
+
+    // Start in a tight cluster (10% of bounds) for dramatic spread effect
+    const spawnRadius = 8
 
     for (let i = 0; i < data.length; i += 4) {
-      // Random position within bounds
-      data[i + 0] = (Math.random() - 0.5) * bounds.x * 2 // x
-      data[i + 1] = (Math.random() - 0.5) * bounds.y * 2 // y
-      data[i + 2] = (Math.random() - 0.5) * bounds.z * 2 // z
+      // Random position in small sphere at center
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      const r = Math.random() * spawnRadius
+
+      data[i + 0] = r * Math.sin(phi) * Math.cos(theta) // x
+      data[i + 1] = r * Math.sin(phi) * Math.sin(theta) // y
+      data[i + 2] = r * Math.cos(phi) // z
       data[i + 3] = Math.random() * Math.PI * 2 // animation phase
     }
   }
 
   fillVelocityTexture(texture) {
     const data = texture.image.data
+    const groupCount = this.config.groupCount || 3
 
     for (let i = 0; i < data.length; i += 4) {
+      const boidIndex = i / 4
+
       // Random initial velocity
       data[i + 0] = (Math.random() - 0.5) * 2 // vx
       data[i + 1] = (Math.random() - 0.5) * 2 // vy
       data[i + 2] = (Math.random() - 0.5) * 2 // vz
-      data[i + 3] = 1.0 // drag coefficient
-    }
-  }
 
-  fillExtraTexture(texture) {
-    const data = texture.image.data
-
-    for (let i = 0; i < data.length; i += 4) {
-      data[i + 0] = Math.floor(Math.random() * 2) // team ID (0 or 1)
-      data[i + 1] = 1.0 // HP (full health)
-      data[i + 2] = 0.0 // state flags
-      data[i + 3] = 0.0 // generic counter
+      // Use shared group IDs if available, otherwise random
+      if (this.groupIds && boidIndex < this.groupIds.length) {
+        data[i + 3] = this.groupIds[boidIndex]
+      } else {
+        data[i + 3] = Math.floor(Math.random() * groupCount)
+      }
     }
   }
 
@@ -151,8 +137,8 @@ export class GPGPUSimulation {
     uniforms.uCohesionWeight = { value: 1.0 }
 
     // Speed limits
-    uniforms.uMaxSpeed = { value: 10.0 }
-    uniforms.uMinSpeed = { value: 2.0 }
+    uniforms.uMaxSpeed = { value: 20.0 }
+    uniforms.uMinSpeed = { value: 5.0 }
 
     // Wall avoidance
     uniforms.uWallWeight = { value: 2.0 }
@@ -161,10 +147,6 @@ export class GPGPUSimulation {
     uniforms.uMouse = { value: new THREE.Vector3() }
     uniforms.uMouseWeight = { value: 0.0 }
     uniforms.uInteractionType = { value: 0 } // 0=none, 1=avoid, 2=attract
-
-    // Shape formation (future use)
-    uniforms.uShapeModeStrength = { value: 0.0 }
-    uniforms.uShapeWeight = { value: 0.0 }
   }
 
   update(delta, elapsed) {
@@ -173,16 +155,12 @@ export class GPGPUSimulation {
     // Update uniforms
     const posUniforms = this.positionVariable.material.uniforms
     const velUniforms = this.velocityVariable.material.uniforms
-    const extraUniforms = this.extraVariable.material.uniforms
 
     posUniforms.uTime.value = elapsed
     posUniforms.uDelta.value = delta
 
     velUniforms.uTime.value = elapsed
     velUniforms.uDelta.value = delta
-
-    extraUniforms.uTime.value = elapsed
-    extraUniforms.uDelta.value = delta
 
     // Compute
     this.gpuCompute.compute()
@@ -196,7 +174,26 @@ export class GPGPUSimulation {
     return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture
   }
 
-  getExtraTexture() {
-    return this.gpuCompute.getCurrentRenderTarget(this.extraVariable).texture
+  setMouseInteraction(position, type, weight) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uMouse.value.copy(position)
+    velUniforms.uInteractionType.value = type
+    velUniforms.uMouseWeight.value = weight
+  }
+
+  setSpeed(maxSpeed, minSpeed) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uMaxSpeed.value = maxSpeed
+    velUniforms.uMinSpeed.value = minSpeed
+  }
+
+  setCohesion(weight) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uCohesionWeight.value = weight
+  }
+
+  setSeparation(weight) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uSeparationWeight.value = weight
   }
 }

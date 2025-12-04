@@ -1,7 +1,7 @@
 uniform float uTime;
+uniform float uScale;
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
-uniform sampler2D textureExtra;
 
 attribute vec2 aReference;
 attribute vec3 aColor;
@@ -11,7 +11,6 @@ attribute float aSeed;
 varying vec3 vColor;
 varying vec3 vNormal;
 varying vec3 vVelocity;
-varying vec4 vExtra;
 varying float vPhase;
 
 // Rotation matrix to align with velocity direction
@@ -26,7 +25,6 @@ void main() {
   // Sample GPGPU textures
   vec4 posData = texture2D(texturePosition, aReference);
   vec4 velData = texture2D(textureVelocity, aReference);
-  vec4 extraData = texture2D(textureExtra, aReference);
 
   vec3 pos = posData.xyz;
   vec3 vel = velData.xyz;
@@ -36,7 +34,6 @@ void main() {
   vColor = aColor;
   vNormal = normal;
   vVelocity = vel;
-  vExtra = extraData;
   vPhase = phase;
 
   // Create rotation matrix to face velocity direction
@@ -49,7 +46,7 @@ void main() {
   animated.x += sin(phase + aSeed * 6.28) * tailFactor * 0.2;
 
   // Apply rotation and scale
-  vec3 transformed = rotationMatrix * (animated * aSize);
+  vec3 transformed = rotationMatrix * (animated * aSize * uScale);
 
   // Apply world position
   transformed += pos;

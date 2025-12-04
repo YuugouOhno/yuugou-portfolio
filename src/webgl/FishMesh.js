@@ -18,6 +18,14 @@ export class FishMesh {
   init() {
     const count = this.config.boidCount
     const textureSize = Math.ceil(Math.sqrt(count))
+    const groupCount = this.config.groupCount || 3
+
+    // Group colors - purple spectrum
+    const groupColors = [
+      new THREE.Color().setHSL(0.92, 0.8, 0.55), // Red-Purple (Magenta)
+      new THREE.Color().setHSL(0.83, 0.8, 0.55), // Purple
+      new THREE.Color().setHSL(0.72, 0.8, 0.55), // Blue-Purple (Violet)
+    ]
 
     // Base geometry (simple cone/pyramid for fish shape)
     const baseGeometry = new THREE.ConeGeometry(0.3, 1.5, 4)
@@ -34,6 +42,7 @@ export class FishMesh {
     const colors = new Float32Array(count * 3)
     const sizes = new Float32Array(count)
     const seeds = new Float32Array(count)
+    const groupIds = new Float32Array(count)
 
     for (let i = 0; i < count; i++) {
       // UV reference to lookup in GPGPU texture
@@ -42,11 +51,20 @@ export class FishMesh {
       references[i * 2 + 0] = x
       references[i * 2 + 1] = y
 
-      // Random base color (ocean blues and teals)
-      const hue = 0.5 + Math.random() * 0.15
-      const saturation = 0.6 + Math.random() * 0.3
-      const lightness = 0.4 + Math.random() * 0.2
-      const color = new THREE.Color().setHSL(hue, saturation, lightness)
+      // Assign group ID (same logic as GPGPUSimulation)
+      const groupId = Math.floor(Math.random() * groupCount)
+      groupIds[i] = groupId
+
+      // Color based on group
+      const baseColor = groupColors[groupId % groupColors.length]
+      // Add slight variation
+      const hsl = {}
+      baseColor.getHSL(hsl)
+      const color = new THREE.Color().setHSL(
+        hsl.h + (Math.random() - 0.5) * 0.03,
+        hsl.s + (Math.random() - 0.5) * 0.1,
+        hsl.l + (Math.random() - 0.5) * 0.1
+      )
       colors[i * 3 + 0] = color.r
       colors[i * 3 + 1] = color.g
       colors[i * 3 + 2] = color.b
@@ -57,6 +75,9 @@ export class FishMesh {
       // Random seed for individual variation
       seeds[i] = Math.random()
     }
+
+    // Store group IDs for GPGPU initialization
+    this.groupIds = groupIds
 
     geometry.setAttribute(
       'aReference',
@@ -81,10 +102,9 @@ export class FishMesh {
       fragmentShader: fishFragment,
       uniforms: {
         uTime: { value: 0.0 },
+        uScale: { value: 1.0 },
         texturePosition: { value: null },
         textureVelocity: { value: null },
-        textureExtra: { value: null },
-        uColorMode: { value: 0 }, // 0=base, 1=velocity, 2=team, 3=mix
       },
       side: THREE.DoubleSide,
     })
@@ -93,12 +113,19 @@ export class FishMesh {
     this.mesh.frustumCulled = false
   }
 
+  setGPGPU(gpgpu) {
+    this.gpgpu = gpgpu
+  }
+
+  setScale(scale) {
+    this.material.uniforms.uScale.value = scale
+  }
+
   update(elapsed) {
     if (!this.material || !this.gpgpu) return
 
     this.material.uniforms.uTime.value = elapsed
     this.material.uniforms.texturePosition.value = this.gpgpu.getPositionTexture()
     this.material.uniforms.textureVelocity.value = this.gpgpu.getVelocityTexture()
-    this.material.uniforms.textureExtra.value = this.gpgpu.getExtraTexture()
   }
 }

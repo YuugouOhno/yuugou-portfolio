@@ -19,9 +19,6 @@ uniform vec3 uMouse;
 uniform float uMouseWeight;
 uniform int uInteractionType;
 
-uniform float uShapeModeStrength;
-uniform float uShapeWeight;
-
 // Limit vector magnitude
 vec3 limit(vec3 v, float max) {
   float len = length(v);
@@ -29,6 +26,35 @@ vec3 limit(vec3 v, float max) {
     return normalize(v) * max;
   }
   return v;
+}
+
+// Mouse interaction force
+vec3 interactMouse(vec3 pos) {
+  if (uInteractionType == 0) return vec3(0.0);
+
+  vec3 toMouse = uMouse - pos;
+  float dist = length(toMouse);
+
+  if (dist < 0.1) return vec3(0.0);
+
+  float influence = 30.0; // Interaction radius
+
+  if (dist < influence) {
+    float strength = 1.0 - (dist / influence);
+    strength = strength * strength; // Quadratic falloff
+
+    vec3 direction = normalize(toMouse);
+
+    if (uInteractionType == 1) {
+      // Avoid (predator)
+      return -direction * strength * 10.0;
+    } else if (uInteractionType == 2) {
+      // Attract (food)
+      return direction * strength * 5.0;
+    }
+  }
+
+  return vec3(0.0);
 }
 
 // Wall avoidance force
@@ -69,10 +95,10 @@ void main() {
 
   vec4 pos = texture2D(texturePosition, uv);
   vec4 vel = texture2D(textureVelocity, uv);
-  vec4 extra = texture2D(textureExtra, uv);
 
   vec3 position = pos.xyz;
   vec3 velocity = vel.xyz;
+  float myGroup = vel.w;
 
   // Boids forces
   vec3 separation = vec3(0.0);
@@ -92,8 +118,13 @@ void main() {
 
       if (ref.x == uv.x && ref.y == uv.y) continue;
 
+      vec4 otherVel = texture2D(textureVelocity, ref);
+      float otherGroup = otherVel.w;
+
+      // Only interact with same group
+      if (myGroup != otherGroup) continue;
+
       vec3 otherPos = texture2D(texturePosition, ref).xyz;
-      vec3 otherVel = texture2D(textureVelocity, ref).xyz;
 
       float dist = distance(position, otherPos);
 
@@ -107,7 +138,7 @@ void main() {
 
       // Alignment
       if (dist < uAlignmentDistance) {
-        alignment += otherVel;
+        alignment += otherVel.xyz;
         alignmentCount++;
       }
 
@@ -124,6 +155,9 @@ void main() {
 
   // 1. Wall avoidance
   acc += avoidWalls(position) * uWallWeight;
+
+  // 2. Mouse interaction
+  acc += interactMouse(position) * uMouseWeight;
 
   // 2. Separation
   if (separationCount > 0) {
@@ -153,9 +187,6 @@ void main() {
   // Apply acceleration
   velocity += acc * uDelta;
 
-  // Apply drag
-  velocity *= vel.w;
-
   // Clamp speed
   float speed = length(velocity);
   if (speed > uMaxSpeed) {
@@ -164,5 +195,6 @@ void main() {
     velocity = normalize(velocity) * uMinSpeed;
   }
 
-  gl_FragColor = vec4(velocity, vel.w);
+  // Preserve group ID in w channel
+  gl_FragColor = vec4(velocity, myGroup);
 }

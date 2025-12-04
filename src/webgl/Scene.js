@@ -14,9 +14,16 @@ export class Scene {
 
     // Configuration
     this.config = {
-      boidCount: 64, // Must be power of 2 (texture size = sqrt(boidCount))
+      boidCount: 4096, // Must be power of 2 (texture size = sqrt(boidCount))
       bounds: new THREE.Vector3(50, 30, 50),
+      groupCount: 3,
     }
+
+    // Mouse interaction
+    this.mouse = new THREE.Vector2()
+    this.mouse3D = new THREE.Vector3()
+    this.raycaster = new THREE.Raycaster()
+    this.interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
   }
 
   init() {
@@ -25,6 +32,7 @@ export class Scene {
     this.initCamera()
     this.initGPGPU()
     this.initFishMesh()
+    this.initUI()
     this.addEventListeners()
     this.animate()
   }
@@ -65,17 +73,234 @@ export class Scene {
   }
 
   initGPGPU() {
-    this.gpgpu = new GPGPUSimulation(this.renderer, this.config)
+    // Create FishMesh first to generate group IDs
+    this.fishMesh = new FishMesh(this.config, null)
+
+    // Pass group IDs to GPGPU
+    this.gpgpu = new GPGPUSimulation(this.renderer, this.config, this.fishMesh.groupIds)
     this.gpgpu.init()
+
+    // Now connect FishMesh to GPGPU
+    this.fishMesh.setGPGPU(this.gpgpu)
   }
 
   initFishMesh() {
-    this.fishMesh = new FishMesh(this.config, this.gpgpu)
+    // FishMesh already created in initGPGPU
     this.scene.add(this.fishMesh.mesh)
+  }
+
+  initUI() {
+    // Create gear button and control panel
+    const container = document.createElement('div')
+    container.id = 'control-container'
+    container.innerHTML = `
+      <button id="gear-btn">⚙</button>
+      <div id="control-panel" class="hidden">
+        <div class="control-header">Controls</div>
+        <div class="control-row">
+          <label>Speed</label>
+          <input type="range" id="speed-slider" min="5" max="40" value="10" step="1">
+          <span id="speed-value">10</span>
+        </div>
+        <div class="control-row">
+          <label>Size</label>
+          <input type="range" id="size-slider" min="0.5" max="3" value="1" step="0.1">
+          <span id="size-value">1.0</span>
+        </div>
+        <div class="control-row">
+          <label>Cohesion</label>
+          <input type="range" id="cohesion-slider" min="0" max="3" value="1" step="0.1">
+          <span id="cohesion-value">1.0</span>
+        </div>
+        <div class="control-row">
+          <label>Separation</label>
+          <input type="range" id="separation-slider" min="0" max="5" value="1.5" step="0.1">
+          <span id="separation-value">1.5</span>
+        </div>
+      </div>
+    `
+    document.body.appendChild(container)
+
+    // Add styles
+    const style = document.createElement('style')
+    style.textContent = `
+      #control-container {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        z-index: 1000;
+      }
+      #gear-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        transition: transform 0.3s, background 0.3s;
+      }
+      #gear-btn:hover {
+        background: rgba(0, 0, 0, 0.9);
+        transform: rotate(90deg);
+      }
+      #control-panel {
+        position: absolute;
+        bottom: 54px;
+        left: 0;
+        background: rgba(0, 0, 0, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        padding: 15px;
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 12px;
+        min-width: 200px;
+        backdrop-filter: blur(10px);
+        transition: opacity 0.3s, transform 0.3s;
+      }
+      #control-panel.hidden {
+        opacity: 0;
+        transform: translateY(10px);
+        pointer-events: none;
+      }
+      .control-header {
+        font-weight: bold;
+        margin-bottom: 12px;
+        font-size: 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        padding-bottom: 8px;
+      }
+      .control-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+        gap: 10px;
+      }
+      .control-row label {
+        width: 70px;
+        flex-shrink: 0;
+      }
+      .control-row input[type="range"] {
+        flex: 1;
+        height: 4px;
+        -webkit-appearance: none;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 2px;
+        cursor: pointer;
+      }
+      .control-row input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        background: #4a9eff;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      .control-row span {
+        width: 30px;
+        text-align: right;
+      }
+    `
+    document.head.appendChild(style)
+
+    // Toggle panel visibility
+    const gearBtn = document.getElementById('gear-btn')
+    const panel = document.getElementById('control-panel')
+    gearBtn.addEventListener('click', () => {
+      panel.classList.toggle('hidden')
+    })
+
+    // Bind slider events
+    const speedSlider = document.getElementById('speed-slider')
+    const sizeSlider = document.getElementById('size-slider')
+    const cohesionSlider = document.getElementById('cohesion-slider')
+    const separationSlider = document.getElementById('separation-slider')
+
+    speedSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('speed-value').textContent = value
+      this.gpgpu.setSpeed(value, value * 0.25)
+    })
+
+    sizeSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('size-value').textContent = value.toFixed(1)
+      this.fishMesh.setScale(value)
+    })
+
+    cohesionSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('cohesion-value').textContent = value.toFixed(1)
+      this.gpgpu.setCohesion(value)
+    })
+
+    separationSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('separation-value').textContent = value.toFixed(1)
+      this.gpgpu.setSeparation(value)
+    })
+
+    // Initial speed animation: start fast, then slow down
+    console.log('[Boids] Starting with speed 40')
+    this.gpgpu.setSpeed(40, 10)
+    setTimeout(() => {
+      console.log('[Boids] Beginning slowdown animation: 40 -> 10 over 1 second')
+      this.animateSpeedDown(40, 10, 1000, speedSlider)
+    }, 3000)
+  }
+
+  animateSpeedDown(from, to, duration, slider) {
+    const startTime = performance.now()
+    const animate = (currentTime) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      // Ease out
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const currentSpeed = from + (to - from) * eased
+
+      this.gpgpu.setSpeed(currentSpeed, currentSpeed * 0.25)
+      slider.value = currentSpeed
+      document.getElementById('speed-value').textContent = Math.round(currentSpeed)
+
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        console.log('[Boids] Slowdown complete, speed now 10')
+      }
+    }
+    requestAnimationFrame(animate)
   }
 
   addEventListeners() {
     window.addEventListener('resize', this.onResize.bind(this))
+    window.addEventListener('mousemove', this.onMouseMove.bind(this))
+    window.addEventListener('mousedown', this.onMouseDown.bind(this))
+    window.addEventListener('mouseup', this.onMouseUp.bind(this))
+  }
+
+  onMouseMove(event) {
+    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1
+    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1
+
+    // Convert to 3D position on interaction plane
+    this.raycaster.setFromCamera(this.mouse, this.camera)
+    this.raycaster.ray.intersectPlane(this.interactionPlane, this.mouse3D)
+  }
+
+  onMouseDown() {
+    if (this.gpgpu) {
+      // Left click = attract (feed)
+      this.gpgpu.setMouseInteraction(this.mouse3D, 2, 5.0)
+    }
+  }
+
+  onMouseUp() {
+    if (this.gpgpu) {
+      this.gpgpu.setMouseInteraction(this.mouse3D, 0, 0.0)
+    }
   }
 
   onResize() {
