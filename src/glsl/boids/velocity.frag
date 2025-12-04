@@ -16,6 +16,7 @@ uniform float uMinSpeed;
 uniform float uWallWeight;
 
 uniform vec3 uMouse;
+uniform vec3 uMouseRayDir;
 uniform float uMouseWeight;
 uniform int uInteractionType;
 
@@ -28,28 +29,55 @@ vec3 limit(vec3 v, float max) {
   return v;
 }
 
+// Distance from point to ray (line)
+float distanceToRay(vec3 pos, vec3 rayOrigin, vec3 rayDir) {
+  vec3 toPos = pos - rayOrigin;
+  float t = dot(toPos, rayDir);
+  vec3 closestPoint = rayOrigin + rayDir * t;
+  return length(pos - closestPoint);
+}
+
+// Get closest point on ray to position
+vec3 closestPointOnRay(vec3 pos, vec3 rayOrigin, vec3 rayDir) {
+  vec3 toPos = pos - rayOrigin;
+  float t = dot(toPos, rayDir);
+  return rayOrigin + rayDir * t;
+}
+
 // Mouse interaction force
 vec3 interactMouse(vec3 pos) {
   if (uInteractionType == 0) return vec3(0.0);
 
-  vec3 toMouse = uMouse - pos;
-  float dist = length(toMouse);
-
-  if (dist < 0.1) return vec3(0.0);
-
   float influence = 30.0; // Interaction radius
 
-  if (dist < influence) {
-    float strength = 1.0 - (dist / influence);
-    strength = strength * strength; // Quadratic falloff
+  if (uInteractionType == 1) {
+    // Repel mode: avoid the ray (line) from camera through mouse
+    float dist = distanceToRay(pos, uMouse, uMouseRayDir);
 
-    vec3 direction = normalize(toMouse);
+    if (dist < 0.1) dist = 0.1;
 
-    if (uInteractionType == 1) {
-      // Avoid (predator)
-      return -direction * strength * 10.0;
-    } else if (uInteractionType == 2) {
-      // Attract (food)
+    if (dist < influence) {
+      float strength = 1.0 - (dist / influence);
+      strength = strength * strength; // Quadratic falloff
+
+      // Direction away from the closest point on ray
+      vec3 closestPt = closestPointOnRay(pos, uMouse, uMouseRayDir);
+      vec3 awayDir = normalize(pos - closestPt);
+
+      return awayDir * strength * 10.0;
+    }
+  } else if (uInteractionType == 2) {
+    // Attract mode: attract to point on interaction plane
+    vec3 toMouse = uMouse - pos;
+    float dist = length(toMouse);
+
+    if (dist < 0.1) return vec3(0.0);
+
+    if (dist < influence) {
+      float strength = 1.0 - (dist / influence);
+      strength = strength * strength; // Quadratic falloff
+
+      vec3 direction = normalize(toMouse);
       return direction * strength * 5.0;
     }
   }

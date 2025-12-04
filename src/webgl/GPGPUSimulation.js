@@ -145,6 +145,7 @@ export class GPGPUSimulation {
 
     // Mouse interaction
     uniforms.uMouse = { value: new THREE.Vector3() }
+    uniforms.uMouseRayDir = { value: new THREE.Vector3(0, 0, -1) }
     uniforms.uMouseWeight = { value: 0.0 }
     uniforms.uInteractionType = { value: 0 } // 0=none, 1=avoid, 2=attract
   }
@@ -174,9 +175,10 @@ export class GPGPUSimulation {
     return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture
   }
 
-  setMouseInteraction(position, type, weight) {
+  setMouseInteraction(position, rayDir, type, weight) {
     const velUniforms = this.velocityVariable.material.uniforms
     velUniforms.uMouse.value.copy(position)
+    velUniforms.uMouseRayDir.value.copy(rayDir)
     velUniforms.uInteractionType.value = type
     velUniforms.uMouseWeight.value = weight
   }

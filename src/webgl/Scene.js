@@ -24,6 +24,10 @@ export class Scene {
     this.mouse3D = new THREE.Vector3()
     this.raycaster = new THREE.Raycaster()
     this.interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+
+    // Interaction settings
+    this.interactionMode = 1 // 0: off, 1: repel, 2: attract
+    this.interactionStrength = 4.5
   }
 
   init() {
@@ -117,6 +121,21 @@ export class Scene {
           <input type="range" id="separation-slider" min="0" max="5" value="1.5" step="0.1">
           <span id="separation-value">1.5</span>
         </div>
+        <div class="control-divider"></div>
+        <div class="control-subheader">Mouse Interaction</div>
+        <div class="control-row">
+          <label>Mode</label>
+          <div class="mode-buttons">
+            <button id="mode-off" class="mode-btn">Off</button>
+            <button id="mode-repel" class="mode-btn active">Repel</button>
+            <button id="mode-attract" class="mode-btn">Attract</button>
+          </div>
+        </div>
+        <div class="control-row">
+          <label>Strength</label>
+          <input type="range" id="strength-slider" min="0" max="20" value="4.5" step="0.5">
+          <span id="strength-value">4.5</span>
+        </div>
       </div>
     `
     document.body.appendChild(container)
@@ -203,6 +222,40 @@ export class Scene {
         width: 30px;
         text-align: right;
       }
+      .control-divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.2);
+        margin: 12px 0;
+      }
+      .control-subheader {
+        font-weight: bold;
+        margin-bottom: 10px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.8);
+      }
+      .mode-buttons {
+        display: flex;
+        gap: 4px;
+        flex: 1;
+      }
+      .mode-btn {
+        flex: 1;
+        padding: 4px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: transparent;
+        color: white;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: background 0.2s, border-color 0.2s;
+      }
+      .mode-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .mode-btn.active {
+        background: #4a9eff;
+        border-color: #4a9eff;
+      }
     `
     document.head.appendChild(style)
 
@@ -241,6 +294,31 @@ export class Scene {
       const value = parseFloat(e.target.value)
       document.getElementById('separation-value').textContent = value.toFixed(1)
       this.gpgpu.setSeparation(value)
+    })
+
+    // Mode buttons
+    const modeOff = document.getElementById('mode-off')
+    const modeRepel = document.getElementById('mode-repel')
+    const modeAttract = document.getElementById('mode-attract')
+    const modeButtons = [modeOff, modeRepel, modeAttract]
+
+    const setActiveMode = (mode) => {
+      this.interactionMode = mode
+      modeButtons.forEach((btn, i) => {
+        btn.classList.toggle('active', i === mode)
+      })
+    }
+
+    modeOff.addEventListener('click', () => setActiveMode(0))
+    modeRepel.addEventListener('click', () => setActiveMode(1))
+    modeAttract.addEventListener('click', () => setActiveMode(2))
+
+    // Strength slider
+    const strengthSlider = document.getElementById('strength-slider')
+    strengthSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('strength-value').textContent = value.toFixed(1)
+      this.interactionStrength = value
     })
 
     // Initial speed animation: start fast, then slow down
@@ -288,19 +366,35 @@ export class Scene {
     // Convert to 3D position on interaction plane
     this.raycaster.setFromCamera(this.mouse, this.camera)
     this.raycaster.ray.intersectPlane(this.interactionPlane, this.mouse3D)
+
+    // Apply interaction based on current mode and strength
+    if (this.gpgpu) {
+      if (this.interactionMode === 1) {
+        // Repel: use ray from camera
+        this.gpgpu.setMouseInteraction(
+          this.camera.position,
+          this.raycaster.ray.direction,
+          this.interactionMode,
+          this.interactionStrength
+        )
+      } else {
+        // Attract or Off: use point on plane
+        this.gpgpu.setMouseInteraction(
+          this.mouse3D,
+          this.raycaster.ray.direction,
+          this.interactionMode,
+          this.interactionStrength
+        )
+      }
+    }
   }
 
   onMouseDown() {
-    if (this.gpgpu) {
-      // Left click = attract (feed)
-      this.gpgpu.setMouseInteraction(this.mouse3D, 2, 5.0)
-    }
+    // No longer used
   }
 
   onMouseUp() {
-    if (this.gpgpu) {
-      this.gpgpu.setMouseInteraction(this.mouse3D, 0, 0.0)
-    }
+    // No longer used
   }
 
   onResize() {
