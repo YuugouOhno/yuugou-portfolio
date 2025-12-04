@@ -28,5 +28,42 @@ export function Hero() {
     </div>
   `
 
+  // Add tilt effect on mouse move
+  setTimeout(() => {
+    const card = section.querySelector('.hero-card')
+    if (!card) return
+
+    card.addEventListener('mousemove', (e) => {
+      const rect = card.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      const centerX = rect.width / 2
+      const centerY = rect.height / 2
+
+      const rotateX = (y - centerY) / 10
+      const rotateY = (centerX - x) / 10
+
+      card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.02)`
+      card.style.boxShadow = `
+        ${-rotateY}px ${rotateX}px 30px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2)
+      `
+
+      // Update CSS variables for light effect
+      const percentX = (x / rect.width) * 100
+      const percentY = (y / rect.height) * 100
+      card.style.setProperty('--mouse-x', `${percentX}%`)
+      card.style.setProperty('--mouse-y', `${percentY}%`)
+    })
+
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = 'perspective(1000px) rotateX(0) rotateY(0) scale(1)'
+      card.style.boxShadow = `
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1)
+      `
+    })
+  }, 0)
+
   return section
 }
