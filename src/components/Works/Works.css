@@ -1,0 +1,9 @@
+#works {
+  min-height: 100vh;
+}
+
+.works-content {
+  width: 100%;
+  max-width: 1200px;
+  color: white;
+}

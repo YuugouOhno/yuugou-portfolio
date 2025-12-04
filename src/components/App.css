@@ -1,0 +1,18 @@
+#app-content {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+#app-content > * {
+  pointer-events: auto;
+}
+
+section {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px;
+  box-sizing: border-box;
+}
