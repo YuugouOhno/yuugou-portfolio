@@ -26,7 +26,7 @@ export class Scene {
     this.interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
 
     // Interaction settings
-    this.interactionMode = 1 // 0: off, 1: repel, 2: attract
+    this.interactionMode = 2 // 0: off, 1: repel, 2: attract
     this.interactionStrength = 4.5
   }
 
@@ -111,15 +111,37 @@ export class Scene {
           <input type="range" id="size-slider" min="0.5" max="3" value="1" step="0.1">
           <span id="size-value">1.0</span>
         </div>
+        <div class="control-divider"></div>
+        <div class="control-subheader">Boids Behavior</div>
         <div class="control-row">
-          <label>Cohesion</label>
-          <input type="range" id="cohesion-slider" min="0" max="3" value="1" step="0.1">
-          <span id="cohesion-value">1.0</span>
+          <label>Sep Dist</label>
+          <input type="range" id="sep-dist-slider" min="1" max="15" value="5" step="0.5">
+          <span id="sep-dist-value">5.0</span>
         </div>
         <div class="control-row">
-          <label>Separation</label>
+          <label>Sep Weight</label>
           <input type="range" id="separation-slider" min="0" max="5" value="1.5" step="0.1">
           <span id="separation-value">1.5</span>
+        </div>
+        <div class="control-row">
+          <label>Align Dist</label>
+          <input type="range" id="align-dist-slider" min="1" max="20" value="10" step="0.5">
+          <span id="align-dist-value">10.0</span>
+        </div>
+        <div class="control-row">
+          <label>Align Weight</label>
+          <input type="range" id="alignment-slider" min="0" max="3" value="1" step="0.1">
+          <span id="alignment-value">1.0</span>
+        </div>
+        <div class="control-row">
+          <label>Coh Dist</label>
+          <input type="range" id="coh-dist-slider" min="1" max="30" value="15" step="0.5">
+          <span id="coh-dist-value">15.0</span>
+        </div>
+        <div class="control-row">
+          <label>Coh Weight</label>
+          <input type="range" id="cohesion-slider" min="0" max="3" value="1" step="0.1">
+          <span id="cohesion-value">1.0</span>
         </div>
         <div class="control-divider"></div>
         <div class="control-subheader">Mouse Interaction</div>
@@ -127,8 +149,8 @@ export class Scene {
           <label>Mode</label>
           <div class="mode-buttons">
             <button id="mode-off" class="mode-btn">Off</button>
-            <button id="mode-repel" class="mode-btn active">Repel</button>
-            <button id="mode-attract" class="mode-btn">Attract</button>
+            <button id="mode-repel" class="mode-btn">Repel</button>
+            <button id="mode-attract" class="mode-btn active">Attract</button>
           </div>
         </div>
         <div class="control-row">
@@ -269,8 +291,12 @@ export class Scene {
     // Bind slider events
     const speedSlider = document.getElementById('speed-slider')
     const sizeSlider = document.getElementById('size-slider')
-    const cohesionSlider = document.getElementById('cohesion-slider')
+    const sepDistSlider = document.getElementById('sep-dist-slider')
     const separationSlider = document.getElementById('separation-slider')
+    const alignDistSlider = document.getElementById('align-dist-slider')
+    const alignmentSlider = document.getElementById('alignment-slider')
+    const cohDistSlider = document.getElementById('coh-dist-slider')
+    const cohesionSlider = document.getElementById('cohesion-slider')
 
     speedSlider.addEventListener('input', (e) => {
       const value = parseFloat(e.target.value)
@@ -284,16 +310,40 @@ export class Scene {
       this.fishMesh.setScale(value)
     })
 
-    cohesionSlider.addEventListener('input', (e) => {
+    sepDistSlider.addEventListener('input', (e) => {
       const value = parseFloat(e.target.value)
-      document.getElementById('cohesion-value').textContent = value.toFixed(1)
-      this.gpgpu.setCohesion(value)
+      document.getElementById('sep-dist-value').textContent = value.toFixed(1)
+      this.gpgpu.setSeparationDistance(value)
     })
 
     separationSlider.addEventListener('input', (e) => {
       const value = parseFloat(e.target.value)
       document.getElementById('separation-value').textContent = value.toFixed(1)
       this.gpgpu.setSeparation(value)
+    })
+
+    alignDistSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('align-dist-value').textContent = value.toFixed(1)
+      this.gpgpu.setAlignmentDistance(value)
+    })
+
+    alignmentSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('alignment-value').textContent = value.toFixed(1)
+      this.gpgpu.setAlignment(value)
+    })
+
+    cohDistSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('coh-dist-value').textContent = value.toFixed(1)
+      this.gpgpu.setCohesionDistance(value)
+    })
+
+    cohesionSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value)
+      document.getElementById('cohesion-value').textContent = value.toFixed(1)
+      this.gpgpu.setCohesion(value)
     })
 
     // Mode buttons

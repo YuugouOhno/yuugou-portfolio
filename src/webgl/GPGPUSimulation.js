@@ -189,13 +189,33 @@ export class GPGPUSimulation {
     velUniforms.uMinSpeed.value = minSpeed
   }
 
-  setCohesion(weight) {
+  setSeparationDistance(dist) {
     const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uCohesionWeight.value = weight
+    velUniforms.uSeparationDistance.value = dist
   }
 
   setSeparation(weight) {
     const velUniforms = this.velocityVariable.material.uniforms
     velUniforms.uSeparationWeight.value = weight
+  }
+
+  setAlignmentDistance(dist) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uAlignmentDistance.value = dist
+  }
+
+  setAlignment(weight) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uAlignmentWeight.value = weight
+  }
+
+  setCohesionDistance(dist) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uCohesionDistance.value = dist
+  }
+
+  setCohesion(weight) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uCohesionWeight.value = weight
   }
 }
