@@ -136,18 +136,18 @@ export class ARGPGPUSimulation {
     uniforms.uInnerRadius = { value: this.config.innerRadius || 0.5 }
     uniforms.uOuterRadius = { value: this.config.outerRadius || 2.0 }
 
-    // Boids parameters (scaled for AR - smaller distances)
-    uniforms.uSeparationDistance = { value: 0.2 }
-    uniforms.uAlignmentDistance = { value: 0.4 }
-    uniforms.uCohesionDistance = { value: 0.6 }
+    // Boids parameters
+    uniforms.uSeparationDistance = { value: 1.0 }
+    uniforms.uAlignmentDistance = { value: 2.0 }
+    uniforms.uCohesionDistance = { value: 3.0 }
 
     uniforms.uSeparationWeight = { value: 1.5 }
     uniforms.uAlignmentWeight = { value: 1.0 }
     uniforms.uCohesionWeight = { value: 1.0 }
 
-    // Speed limits (slower for AR - in meters)
-    uniforms.uMaxSpeed = { value: 0.5 }
-    uniforms.uMinSpeed = { value: 0.1 }
+    // Speed limits
+    uniforms.uMaxSpeed = { value: 3.0 }
+    uniforms.uMinSpeed = { value: 0.5 }
 
     // Wall avoidance (spherical shell)
     uniforms.uWallWeight = { value: 3.0 }

@@ -99,6 +99,7 @@ export class ARController {
   }
 
   async initDemoBoids() {
+    const THREE = await this.loadThree()
     const { ARBoids } = await import('../../webgl/ar/ARBoids.js')
 
     this.arBoids = new ARBoids({
@@ -113,9 +114,28 @@ export class ARController {
       const mesh = this.arBoids.getMesh()
       if (mesh) {
         this.demoScene.add(mesh)
+        console.log('[ARController] Fish mesh added to scene')
       }
       this.arBoids.show()
     }
+
+    // Debug: Add visible helper spheres to show shell bounds
+    const innerGeo = new THREE.SphereGeometry(1.0, 16, 16)
+    const innerMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.2 })
+    const innerSphere = new THREE.Mesh(innerGeo, innerMat)
+    this.demoScene.add(innerSphere)
+
+    const outerGeo = new THREE.SphereGeometry(4.0, 16, 16)
+    const outerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true, transparent: true, opacity: 0.2 })
+    const outerSphere = new THREE.Mesh(outerGeo, outerMat)
+    this.demoScene.add(outerSphere)
+
+    // Debug: Add a test cube at origin
+    const cubeGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5)
+    const cubeMat = new THREE.MeshBasicMaterial({ color: 0xffff00 })
+    const cube = new THREE.Mesh(cubeGeo, cubeMat)
+    this.demoScene.add(cube)
+    console.log('[ARController] Debug helpers added')
   }
 
   animateDemo() {
@@ -126,9 +146,11 @@ export class ARController {
     const delta = this.demoClock.getDelta()
     const elapsed = this.demoClock.getElapsedTime()
 
-    // Slowly rotate camera around origin
-    this.demoCamera.position.x = Math.sin(elapsed * 0.1) * 0.5
-    this.demoCamera.position.z = Math.cos(elapsed * 0.1) * 0.5
+    // Slowly rotate camera around origin - position camera further back
+    const cameraRadius = 5
+    this.demoCamera.position.x = Math.sin(elapsed * 0.1) * cameraRadius
+    this.demoCamera.position.z = Math.cos(elapsed * 0.1) * cameraRadius
+    this.demoCamera.position.y = 2
     this.demoCamera.lookAt(0, 0, 0)
 
     // Update boids
@@ -192,6 +214,11 @@ export class ARController {
       // Initialize Card Animation
       this.initCardAnimation()
 
+      // Request device orientation permission (iOS 13+)
+      if (this.arScene.needsOrientationPermission) {
+        await this.arScene.requestOrientationPermission()
+      }
+
       // Start AR
       const startSuccess = await this.arScene.start()
       if (!startSuccess) {
@@ -249,10 +276,12 @@ export class ARController {
 
   async initBoids() {
     try {
+      const THREE = this.arScene.getTHREE()
+
       this.arBoids = new ARBoids({
         boidCount: this.boidCount,
-        innerRadius: 0.5,  // 50cm from user
-        outerRadius: 2.5,  // 2.5m from user
+        innerRadius: 2,     // 2m from camera (inner shell)
+        outerRadius: 8,     // 8m from camera (outer shell)
         groupCount: 3
       })
 
@@ -260,14 +289,26 @@ export class ARController {
       const success = await this.arBoids.init(renderer)
 
       if (success) {
-        // Add boids mesh to scene
+        // Add boids mesh to dedicated fish scene
         const mesh = this.arBoids.getMesh()
+
+        // Add fish mesh to dedicated fish scene (not MindAR's scene)
         if (mesh) {
-          this.arScene.addToScene(mesh)
+          this.arScene.addToFishScene(mesh)
+          console.log('[ARController] Fish mesh added to fishScene')
         }
+
         // Start visible since we default to FISH mode
         this.arBoids.show()
-        console.log('[ARController] Boids initialized')
+        console.log('[ARController] Boids initialized with shell: inner=2m, outer=8m')
+
+        // Add lights to fish scene
+        const fishScene = this.arScene.getFishScene()
+        const ambient = new THREE.AmbientLight(0x404040, 0.5)
+        fishScene.add(ambient)
+        const directional = new THREE.DirectionalLight(0xffffff, 1)
+        directional.position.set(5, 10, 5)
+        fishScene.add(directional)
       } else {
         console.warn('[ARController] Boids initialization failed')
       }

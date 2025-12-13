@@ -29,10 +29,8 @@ export class ARFishMesh {
       new THREE.Color().setHSL(0.72, 0.8, 0.55), // Blue-Purple (Violet)
     ]
 
-    // Base geometry - smaller for AR (scaled in meters)
-    // Original was 0.3 radius, 1.5 height for desktop
-    // For AR we scale down significantly
-    const baseGeometry = new THREE.ConeGeometry(0.02, 0.08, 4) // Much smaller for AR
+    // Base geometry for AR (in meters, but visible)
+    const baseGeometry = new THREE.ConeGeometry(0.1, 0.4, 4)
     baseGeometry.rotateX(Math.PI / 2)
 
     // Create instanced geometry
