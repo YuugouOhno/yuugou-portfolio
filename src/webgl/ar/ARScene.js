@@ -59,6 +59,9 @@ export class ARScene {
       this.deviceOrientation = { alpha: 0, beta: 0, gamma: 0 }
       this.setupDeviceOrientation()
 
+      // Debug overlay for mobile
+      this.createDebugOverlay()
+
       // Setup anchor for image target
       this.setupAnchor()
 
@@ -68,6 +71,37 @@ export class ARScene {
       if (this.onError) this.onError(error)
       return false
     }
+  }
+
+  createDebugOverlay() {
+    this.debugOverlay = document.createElement('div')
+    this.debugOverlay.style.cssText = `
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      color: #0f0;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 10000;
+      pointer-events: none;
+    `
+    this.debugOverlay.innerHTML = 'Device Orientation: loading...'
+    document.body.appendChild(this.debugOverlay)
+  }
+
+  updateDebugOverlay() {
+    if (!this.debugOverlay) return
+    const { alpha, beta, gamma } = this.deviceOrientation
+    this.debugOverlay.innerHTML = `
+      <b>Device Orientation</b><br>
+      α (compass): ${alpha.toFixed(1)}°<br>
+      β (tilt FB): ${beta.toFixed(1)}°<br>
+      γ (tilt LR): ${gamma.toFixed(1)}°<br>
+      Mode: ${this.mode}
+    `
   }
 
   setupDeviceOrientation() {
@@ -223,6 +257,9 @@ export class ARScene {
     // Render MindAR scene (camera feed + card overlay)
     this.renderer.autoClear = true
     this.renderer.render(this.scene, this.camera)
+
+    // Update debug overlay
+    this.updateDebugOverlay()
 
     // If in FISH mode, also render fish scene on top (without clearing)
     if (this.mode === 'FISH' && this.fishScene.children.length > 0) {
