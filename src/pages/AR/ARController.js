@@ -28,9 +28,9 @@ export class ARController {
     const cores = navigator.hardwareConcurrency || 4
     const isLowEnd = cores <= 4
 
-    if (isLowEnd) return 64
-    if (isMobile) return 256
-    return 512
+    if (isLowEnd) return 128
+    if (isMobile) return 512
+    return 1024
   }
 
   async checkDemoMode() {
@@ -280,8 +280,8 @@ export class ARController {
 
       this.arBoids = new ARBoids({
         boidCount: this.boidCount,
-        innerRadius: 2,     // 2m from camera (inner shell)
-        outerRadius: 8,     // 8m from camera (outer shell)
+        innerRadius: 1,     // 1m from camera (inner shell)
+        outerRadius: 5,     // 5m from camera (outer shell)
         groupCount: 3
       })
 
@@ -300,7 +300,7 @@ export class ARController {
 
         // Start visible since we default to FISH mode
         this.arBoids.show()
-        console.log('[ARController] Boids initialized with shell: inner=2m, outer=8m')
+        console.log('[ARController] Boids initialized with shell: inner=1m, outer=5m')
 
         // Add lights to fish scene
         const fishScene = this.arScene.getFishScene()

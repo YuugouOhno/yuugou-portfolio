@@ -86,21 +86,49 @@ export class ARScene {
       padding: 10px;
       border-radius: 5px;
       z-index: 10000;
-      pointer-events: none;
     `
     this.debugOverlay.innerHTML = 'Device Orientation: loading...'
     document.body.appendChild(this.debugOverlay)
+
+    // Add permission button for iOS
+    this.permissionBtn = document.createElement('button')
+    this.permissionBtn.textContent = '🔄 ジャイロを有効化'
+    this.permissionBtn.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #6366f1;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      font-size: 16px;
+      border-radius: 10px;
+      z-index: 10000;
+      cursor: pointer;
+    `
+    this.permissionBtn.onclick = async () => {
+      await this.requestOrientationPermission()
+      // Also try starting without permission (for Android)
+      this.startDeviceOrientation()
+      this.permissionBtn.style.display = 'none'
+    }
+    document.body.appendChild(this.permissionBtn)
   }
 
   updateDebugOverlay() {
     if (!this.debugOverlay) return
     const { alpha, beta, gamma } = this.deviceOrientation
+    const fishCount = this.fishScene?.children.length || 0
+    const gyroStatus = this.hasOrientationData ? '✅ Active' : (this.orientationActive ? '⏳ Waiting...' : '❌ Inactive')
     this.debugOverlay.innerHTML = `
       <b>Device Orientation</b><br>
+      Gyro: ${gyroStatus}<br>
       α (compass): ${alpha.toFixed(1)}°<br>
       β (tilt FB): ${beta.toFixed(1)}°<br>
       γ (tilt LR): ${gamma.toFixed(1)}°<br>
-      Mode: ${this.mode}
+      Mode: ${this.mode}<br>
+      Fish scene: ${fishCount} objects
     `
   }
 
@@ -132,10 +160,12 @@ export class ARScene {
   }
 
   startDeviceOrientation() {
+    this.orientationActive = true
     window.addEventListener('deviceorientation', (event) => {
       this.deviceOrientation.alpha = event.alpha || 0  // Compass direction (0-360)
       this.deviceOrientation.beta = event.beta || 0    // Front/back tilt (-180 to 180)
       this.deviceOrientation.gamma = event.gamma || 0  // Left/right tilt (-90 to 90)
+      this.hasOrientationData = true
     }, true)
     console.log('[ARScene] Device orientation listener started')
   }
