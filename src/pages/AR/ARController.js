@@ -280,8 +280,8 @@ export class ARController {
 
       this.arBoids = new ARBoids({
         boidCount: this.boidCount,
-        innerRadius: 1,     // 1m from camera (inner shell)
-        outerRadius: 5,     // 5m from camera (outer shell)
+        innerRadius: 2,     // Spherical barrier around user
+        outerRadius: 15,    // 15m from camera
         groupCount: 3
       })
 
@@ -300,7 +300,7 @@ export class ARController {
 
         // Start visible since we default to FISH mode
         this.arBoids.show()
-        console.log('[ARController] Boids initialized with shell: inner=1m, outer=5m')
+        console.log('[ARController] Boids initialized')
 
         // Add lights to fish scene
         const fishScene = this.arScene.getFishScene()

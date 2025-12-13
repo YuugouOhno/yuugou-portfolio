@@ -59,9 +59,6 @@ export class ARScene {
       this.deviceOrientation = { alpha: 0, beta: 0, gamma: 0 }
       this.setupDeviceOrientation()
 
-      // Debug overlay for mobile
-      this.createDebugOverlay()
-
       // Setup anchor for image target
       this.setupAnchor()
 
@@ -71,65 +68,6 @@ export class ARScene {
       if (this.onError) this.onError(error)
       return false
     }
-  }
-
-  createDebugOverlay() {
-    this.debugOverlay = document.createElement('div')
-    this.debugOverlay.style.cssText = `
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      background: rgba(0,0,0,0.7);
-      color: #0f0;
-      font-family: monospace;
-      font-size: 12px;
-      padding: 10px;
-      border-radius: 5px;
-      z-index: 10000;
-    `
-    this.debugOverlay.innerHTML = 'Device Orientation: loading...'
-    document.body.appendChild(this.debugOverlay)
-
-    // Add permission button for iOS
-    this.permissionBtn = document.createElement('button')
-    this.permissionBtn.textContent = '🔄 ジャイロを有効化'
-    this.permissionBtn.style.cssText = `
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #6366f1;
-      color: white;
-      border: none;
-      padding: 15px 30px;
-      font-size: 16px;
-      border-radius: 10px;
-      z-index: 10000;
-      cursor: pointer;
-    `
-    this.permissionBtn.onclick = async () => {
-      await this.requestOrientationPermission()
-      // Also try starting without permission (for Android)
-      this.startDeviceOrientation()
-      this.permissionBtn.style.display = 'none'
-    }
-    document.body.appendChild(this.permissionBtn)
-  }
-
-  updateDebugOverlay() {
-    if (!this.debugOverlay) return
-    const { alpha, beta, gamma } = this.deviceOrientation
-    const fishCount = this.fishScene?.children.length || 0
-    const gyroStatus = this.hasOrientationData ? '✅ Active' : (this.orientationActive ? '⏳ Waiting...' : '❌ Inactive')
-    this.debugOverlay.innerHTML = `
-      <b>Device Orientation</b><br>
-      Gyro: ${gyroStatus}<br>
-      α (compass): ${alpha.toFixed(1)}°<br>
-      β (tilt FB): ${beta.toFixed(1)}°<br>
-      γ (tilt LR): ${gamma.toFixed(1)}°<br>
-      Mode: ${this.mode}<br>
-      Fish scene: ${fishCount} objects
-    `
   }
 
   setupDeviceOrientation() {
@@ -160,14 +98,11 @@ export class ARScene {
   }
 
   startDeviceOrientation() {
-    this.orientationActive = true
     window.addEventListener('deviceorientation', (event) => {
-      this.deviceOrientation.alpha = event.alpha || 0  // Compass direction (0-360)
-      this.deviceOrientation.beta = event.beta || 0    // Front/back tilt (-180 to 180)
-      this.deviceOrientation.gamma = event.gamma || 0  // Left/right tilt (-90 to 90)
-      this.hasOrientationData = true
+      this.deviceOrientation.alpha = event.alpha || 0
+      this.deviceOrientation.beta = event.beta || 0
+      this.deviceOrientation.gamma = event.gamma || 0
     }, true)
-    console.log('[ARScene] Device orientation listener started')
   }
 
   updateFishCameraOrientation() {
@@ -287,9 +222,6 @@ export class ARScene {
     // Render MindAR scene (camera feed + card overlay)
     this.renderer.autoClear = true
     this.renderer.render(this.scene, this.camera)
-
-    // Update debug overlay
-    this.updateDebugOverlay()
 
     // If in FISH mode, also render fish scene on top (without clearing)
     if (this.mode === 'FISH' && this.fishScene.children.length > 0) {

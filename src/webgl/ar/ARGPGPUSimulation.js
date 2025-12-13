@@ -85,20 +85,12 @@ export class ARGPGPUSimulation {
 
   fillPositionTexture(texture) {
     const data = texture.image.data
-    const innerRadius = this.config.innerRadius || 0.5
-    const outerRadius = this.config.outerRadius || 2.0
-    const midRadius = (innerRadius + outerRadius) / 2
 
     for (let i = 0; i < data.length; i += 4) {
-      // Random position on spherical shell
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.acos(2 * Math.random() - 1)
-      // Random radius between inner and outer
-      const r = innerRadius + Math.random() * (outerRadius - innerRadius)
-
-      data[i + 0] = r * Math.sin(phi) * Math.cos(theta) // x
-      data[i + 1] = r * Math.sin(phi) * Math.sin(theta) // y
-      data[i + 2] = r * Math.cos(phi) // z
+      // Start all fish at origin (0,0,0) with tiny random offset
+      data[i + 0] = (Math.random() - 0.5) * 0.1 // x
+      data[i + 1] = (Math.random() - 0.5) * 0.1 // y
+      data[i + 2] = (Math.random() - 0.5) * 0.1 // z
       data[i + 3] = Math.random() * Math.PI * 2 // animation phase
     }
   }
@@ -110,7 +102,7 @@ export class ARGPGPUSimulation {
     for (let i = 0; i < data.length; i += 4) {
       const boidIndex = i / 4
 
-      // Random initial velocity (slower for AR)
+      // Random initial velocity
       data[i + 0] = (Math.random() - 0.5) * 0.5 // vx
       data[i + 1] = (Math.random() - 0.5) * 0.5 // vy
       data[i + 2] = (Math.random() - 0.5) * 0.5 // vz

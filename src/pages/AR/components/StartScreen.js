@@ -14,7 +14,7 @@ export function StartScreen({ onStart }) {
       <p>Point your camera at my business card to see the magic!</p>
       <p class="ar-sub">Or watch the fish swim around you.</p>
       <button class="ar-start-btn">Start AR</button>
-      <p class="ar-permission-note">Camera access required</p>
+      <p class="ar-permission-note">Camera & motion sensor access required</p>
     </div>
   `
 
@@ -36,6 +36,8 @@ export function StartScreen({ onStart }) {
     startBtn.disabled = true
     startBtn.textContent = 'Starting...'
     try {
+      // Request gyro permission first (iOS 13+ requires user gesture)
+      await requestGyroPermission()
       await onStart()
     } catch (error) {
       console.error('Failed to start AR:', error)
@@ -43,6 +45,18 @@ export function StartScreen({ onStart }) {
       startBtn.textContent = 'Start AR'
     }
   })
+
+  async function requestGyroPermission() {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission()
+        console.log('[StartScreen] Gyro permission:', permission)
+      } catch (e) {
+        console.warn('[StartScreen] Gyro permission error:', e)
+      }
+    }
+  }
 
   return screen
 }
