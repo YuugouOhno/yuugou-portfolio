@@ -458,7 +458,9 @@ export class Scene {
   }
 
   animate() {
-    requestAnimationFrame(this.animate.bind(this))
+    if (this.disposed) return
+
+    this.animationFrameId = requestAnimationFrame(this.animate.bind(this))
 
     const delta = this.clock.getDelta()
     const elapsed = this.clock.getElapsedTime()
@@ -474,5 +476,58 @@ export class Scene {
     }
 
     this.renderer.render(this.scene, this.camera)
+  }
+
+  dispose() {
+    this.disposed = true
+
+    // Cancel animation frame
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId)
+    }
+
+    // Remove event listeners
+    window.removeEventListener('resize', this.onResize.bind(this))
+    window.removeEventListener('mousemove', this.onMouseMove.bind(this))
+    window.removeEventListener('mousedown', this.onMouseDown.bind(this))
+    window.removeEventListener('mouseup', this.onMouseUp.bind(this))
+
+    // Dispose GPGPU
+    if (this.gpgpu) {
+      this.gpgpu.dispose()
+    }
+
+    // Dispose fish mesh
+    if (this.fishMesh) {
+      this.fishMesh.dispose()
+    }
+
+    // Dispose scene
+    if (this.scene) {
+      this.scene.traverse((object) => {
+        if (object.geometry) {
+          object.geometry.dispose()
+        }
+        if (object.material) {
+          if (Array.isArray(object.material)) {
+            object.material.forEach((material) => material.dispose())
+          } else {
+            object.material.dispose()
+          }
+        }
+      })
+    }
+
+    // Dispose renderer
+    if (this.renderer) {
+      this.renderer.dispose()
+      this.renderer.domElement.remove()
+    }
+
+    // Remove UI
+    const controlContainer = document.getElementById('control-container')
+    if (controlContainer) {
+      controlContainer.remove()
+    }
   }
 }

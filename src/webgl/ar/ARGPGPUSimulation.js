@@ -1,15 +1,14 @@
+// AR-specific GPGPU Simulation with spherical shell bounds
 import * as THREE from 'three'
-import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js'
+import positionFragment from '../../glsl/boids/position.frag?raw'
+import velocitySphericalFragment from '../../glsl/boids/velocity-spherical.frag?raw'
 
-// Shader imports
-import positionFragment from '../glsl/boids/position.frag?raw'
-import velocityFragment from '../glsl/boids/velocity.frag?raw'
-
-export class GPGPUSimulation {
+export class ARGPGPUSimulation {
   constructor(renderer, config, groupIds = null) {
     this.renderer = renderer
     this.config = config
     this.groupIds = groupIds
+    this.THREE = THREE
 
     // Texture size (must be power of 2)
     this.textureSize = Math.ceil(Math.sqrt(config.boidCount))
@@ -21,7 +20,11 @@ export class GPGPUSimulation {
     this.velocityVariable = null
   }
 
-  init() {
+  async init() {
+    // Dynamically import GPUComputationRenderer
+    // This needs to work with MindAR's Three.js version
+    const { GPUComputationRenderer } = await import('three/addons/misc/GPUComputationRenderer.js')
+
     this.gpuCompute = new GPUComputationRenderer(
       this.textureSize,
       this.textureSize,
@@ -31,7 +34,7 @@ export class GPGPUSimulation {
     // Check for WebGL 2 support
     if (!this.renderer.capabilities.isWebGL2) {
       console.error('WebGL 2 is required for GPGPU simulation')
-      return
+      return false
     }
 
     // Create initial textures
@@ -51,7 +54,7 @@ export class GPGPUSimulation {
 
     this.velocityVariable = this.gpuCompute.addVariable(
       'textureVelocity',
-      velocityFragment,
+      velocitySphericalFragment,
       velocityTexture
     )
 
@@ -74,20 +77,24 @@ export class GPGPUSimulation {
     const error = this.gpuCompute.init()
     if (error !== null) {
       console.error('GPUComputationRenderer error:', error)
+      return false
     }
+
+    return true
   }
 
   fillPositionTexture(texture) {
     const data = texture.image.data
-
-    // Start in a tight cluster (10% of bounds) for dramatic spread effect
-    const spawnRadius = 8
+    const innerRadius = this.config.innerRadius || 0.5
+    const outerRadius = this.config.outerRadius || 2.0
+    const midRadius = (innerRadius + outerRadius) / 2
 
     for (let i = 0; i < data.length; i += 4) {
-      // Random position in small sphere at center
+      // Random position on spherical shell
       const theta = Math.random() * Math.PI * 2
       const phi = Math.acos(2 * Math.random() - 1)
-      const r = Math.random() * spawnRadius
+      // Random radius between inner and outer
+      const r = innerRadius + Math.random() * (outerRadius - innerRadius)
 
       data[i + 0] = r * Math.sin(phi) * Math.cos(theta) // x
       data[i + 1] = r * Math.sin(phi) * Math.sin(theta) // y
@@ -103,10 +110,10 @@ export class GPGPUSimulation {
     for (let i = 0; i < data.length; i += 4) {
       const boidIndex = i / 4
 
-      // Random initial velocity
-      data[i + 0] = (Math.random() - 0.5) * 2 // vx
-      data[i + 1] = (Math.random() - 0.5) * 2 // vy
-      data[i + 2] = (Math.random() - 0.5) * 2 // vz
+      // Random initial velocity (slower for AR)
+      data[i + 0] = (Math.random() - 0.5) * 0.5 // vx
+      data[i + 1] = (Math.random() - 0.5) * 0.5 // vy
+      data[i + 2] = (Math.random() - 0.5) * 0.5 // vz
 
       // Use shared group IDs if available, otherwise random
       if (this.groupIds && boidIndex < this.groupIds.length) {
@@ -118,36 +125,32 @@ export class GPGPUSimulation {
   }
 
   addUniforms(variable) {
+    const THREE = this.THREE
     const uniforms = variable.material.uniforms
 
     // Time
     uniforms.uTime = { value: 0.0 }
     uniforms.uDelta = { value: 0.0 }
 
-    // Bounds
-    uniforms.uBounds = { value: this.config.bounds }
+    // Spherical shell bounds
+    uniforms.uInnerRadius = { value: this.config.innerRadius || 0.5 }
+    uniforms.uOuterRadius = { value: this.config.outerRadius || 2.0 }
 
-    // Boids parameters
-    uniforms.uSeparationDistance = { value: 5.0 }
-    uniforms.uAlignmentDistance = { value: 10.0 }
-    uniforms.uCohesionDistance = { value: 15.0 }
+    // Boids parameters (scaled for AR - smaller distances)
+    uniforms.uSeparationDistance = { value: 0.2 }
+    uniforms.uAlignmentDistance = { value: 0.4 }
+    uniforms.uCohesionDistance = { value: 0.6 }
 
     uniforms.uSeparationWeight = { value: 1.5 }
     uniforms.uAlignmentWeight = { value: 1.0 }
     uniforms.uCohesionWeight = { value: 1.0 }
 
-    // Speed limits
-    uniforms.uMaxSpeed = { value: 20.0 }
-    uniforms.uMinSpeed = { value: 5.0 }
+    // Speed limits (slower for AR - in meters)
+    uniforms.uMaxSpeed = { value: 0.5 }
+    uniforms.uMinSpeed = { value: 0.1 }
 
-    // Wall avoidance
-    uniforms.uWallWeight = { value: 2.0 }
-
-    // Mouse interaction
-    uniforms.uMouse = { value: new THREE.Vector3() }
-    uniforms.uMouseRayDir = { value: new THREE.Vector3(0, 0, -1) }
-    uniforms.uMouseWeight = { value: 0.0 }
-    uniforms.uInteractionType = { value: 0 } // 0=none, 1=avoid, 2=attract
+    // Wall avoidance (spherical shell)
+    uniforms.uWallWeight = { value: 3.0 }
   }
 
   update(delta, elapsed) {
@@ -158,10 +161,10 @@ export class GPGPUSimulation {
     const velUniforms = this.velocityVariable.material.uniforms
 
     posUniforms.uTime.value = elapsed
-    posUniforms.uDelta.value = delta
+    posUniforms.uDelta.value = Math.min(delta, 0.1) // Cap delta to prevent jumps
 
     velUniforms.uTime.value = elapsed
-    velUniforms.uDelta.value = delta
+    velUniforms.uDelta.value = Math.min(delta, 0.1)
 
     // Compute
     this.gpuCompute.compute()
@@ -175,48 +178,16 @@ export class GPGPUSimulation {
     return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture
   }
 
-  setMouseInteraction(position, rayDir, type, weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uMouse.value.copy(position)
-    velUniforms.uMouseRayDir.value.copy(rayDir)
-    velUniforms.uInteractionType.value = type
-    velUniforms.uMouseWeight.value = weight
-  }
-
   setSpeed(maxSpeed, minSpeed) {
     const velUniforms = this.velocityVariable.material.uniforms
     velUniforms.uMaxSpeed.value = maxSpeed
     velUniforms.uMinSpeed.value = minSpeed
   }
 
-  setSeparationDistance(dist) {
+  setShellRadius(innerRadius, outerRadius) {
     const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uSeparationDistance.value = dist
-  }
-
-  setSeparation(weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uSeparationWeight.value = weight
-  }
-
-  setAlignmentDistance(dist) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uAlignmentDistance.value = dist
-  }
-
-  setAlignment(weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uAlignmentWeight.value = weight
-  }
-
-  setCohesionDistance(dist) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uCohesionDistance.value = dist
-  }
-
-  setCohesion(weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uCohesionWeight.value = weight
+    velUniforms.uInnerRadius.value = innerRadius
+    velUniforms.uOuterRadius.value = outerRadius
   }
 
   dispose() {

@@ -1,10 +1,16 @@
 import './style.css'
-import { Scene } from './webgl/Scene.js'
-import { App } from './components/App.js'
+import { Router } from './router/Router.js'
+import { homePage } from './pages/Home.js'
+import { arPage } from './pages/AR/AR.js'
 
-// Background: WebGL Boids simulation
-const scene = new Scene()
-scene.init()
+// Define routes
+const routes = [
+  { path: '/', handler: homePage },
+  { path: '/ar', handler: arPage },
+  { path: '*', handler: homePage }
+]
 
-// Foreground: Page content
-document.getElementById('app').appendChild(App())
+// Initialize router
+const router = new Router(routes)
+Router.instance = router
+router.init()

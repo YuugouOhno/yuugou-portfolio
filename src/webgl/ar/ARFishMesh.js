@@ -1,34 +1,38 @@
+// AR-specific Fish Mesh
 import * as THREE from 'three'
+import fishVertex from '../../glsl/fish/fish.vert?raw'
+import fishFragment from '../../glsl/fish/fish.frag?raw'
 
-// Shader imports
-import fishVertex from '../glsl/fish/fish.vert?raw'
-import fishFragment from '../glsl/fish/fish.frag?raw'
-
-export class FishMesh {
+export class ARFishMesh {
   constructor(config, gpgpu) {
     this.config = config
     this.gpgpu = gpgpu
+    this.THREE = THREE
 
     this.mesh = null
     this.material = null
+    this.groupIds = null
 
     this.init()
   }
 
   init() {
+    const THREE = this.THREE
     const count = this.config.boidCount
     const textureSize = Math.ceil(Math.sqrt(count))
     const groupCount = this.config.groupCount || 3
 
-    // Group colors - purple spectrum
+    // Group colors - purple spectrum (same as original)
     const groupColors = [
       new THREE.Color().setHSL(0.92, 0.8, 0.55), // Red-Purple (Magenta)
       new THREE.Color().setHSL(0.83, 0.8, 0.55), // Purple
       new THREE.Color().setHSL(0.72, 0.8, 0.55), // Blue-Purple (Violet)
     ]
 
-    // Base geometry (simple cone/pyramid for fish shape)
-    const baseGeometry = new THREE.ConeGeometry(0.3, 1.5, 4)
+    // Base geometry - smaller for AR (scaled in meters)
+    // Original was 0.3 radius, 1.5 height for desktop
+    // For AR we scale down significantly
+    const baseGeometry = new THREE.ConeGeometry(0.02, 0.08, 4) // Much smaller for AR
     baseGeometry.rotateX(Math.PI / 2)
 
     // Create instanced geometry
@@ -51,13 +55,12 @@ export class FishMesh {
       references[i * 2 + 0] = x
       references[i * 2 + 1] = y
 
-      // Assign group ID (same logic as GPGPUSimulation)
+      // Assign group ID
       const groupId = Math.floor(Math.random() * groupCount)
       groupIds[i] = groupId
 
       // Color based on group
       const baseColor = groupColors[groupId % groupColors.length]
-      // Add slight variation
       const hsl = {}
       baseColor.getHSL(hsl)
       const color = new THREE.Color().setHSL(
@@ -107,6 +110,7 @@ export class FishMesh {
         textureVelocity: { value: null },
       },
       side: THREE.DoubleSide,
+      transparent: true, // Enable for better AR blending
     })
 
     this.mesh = new THREE.Mesh(geometry, this.material)
@@ -121,12 +125,28 @@ export class FishMesh {
     this.material.uniforms.uScale.value = scale
   }
 
+  show() {
+    if (this.mesh) {
+      this.mesh.visible = true
+    }
+  }
+
+  hide() {
+    if (this.mesh) {
+      this.mesh.visible = false
+    }
+  }
+
   update(elapsed) {
     if (!this.material || !this.gpgpu) return
 
     this.material.uniforms.uTime.value = elapsed
     this.material.uniforms.texturePosition.value = this.gpgpu.getPositionTexture()
     this.material.uniforms.textureVelocity.value = this.gpgpu.getVelocityTexture()
+  }
+
+  getMesh() {
+    return this.mesh
   }
 
   dispose() {
