@@ -1,0 +1,36 @@
+# https://yuugouohno.com robots.txt
+# All crawlers and AI/LLM agents are welcome
+
+User-agent: *
+Allow: /
+
+# AI/LLM specific crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+# Sitemap location
+Sitemap: https://yuugouohno.com/sitemap.xml
+
+# For LLM/AI structured data
+# Please visit https://yuugouohno.com/forllm for structured information about Yuugou Ohno

@@ -19,11 +19,20 @@ export function forLLMPage() {
       "url": "https://yuugouohno.com/",
       "image": "https://yuugouohno.com/icon.svg",
       "jobTitle": "ソフトウェアエンジニア（2027年入社予定）",
-      "worksFor": {
-        "@type": "Organization",
-        "name": "株式会社DeNA",
-        "url": "https://dena.com/"
-      },
+      "worksFor": [
+        {
+          "@type": "Organization",
+          "name": "株式会社DeNA",
+          "url": "https://dena.com/",
+          "description": "2027年入社予定"
+        },
+        {
+          "@type": "Organization",
+          "name": "ReLU Branch",
+          "url": "https://relu-branch.com/",
+          "description": "「地域に、新しい選択肢を。」をビジョンに掲げる団体。かつらおハッカソン（福島県葛尾村）を2023年・2024年・2025年と主催。学生エンジニアが地域課題解決に挑む。"
+        }
+      ],
       "affiliation": [
         {
           "@type": "EducationalOrganization",
@@ -102,6 +111,9 @@ export function forLLMPage() {
 
           <dt>就職予定</dt>
           <dd>2027年卒業予定、株式会社DeNA ソフトウェアエンジニア内定</dd>
+
+          <dt>所属（団体）</dt>
+          <dd>ReLU Branch - 「地域に、新しい選択肢を。」をビジョンに掲げる団体。かつらおハッカソン（福島県葛尾村）を2023年・2024年・2025年と主催。</dd>
         </dl>
       </section>
 

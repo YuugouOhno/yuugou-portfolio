@@ -2,6 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Static page for LLM/crawlers (must be before SPA fallback)
+[[redirects]]
+  from = "/forllm"
+  to = "/forllm.html"
+  status = 200
+
+# SPA fallback for all other routes
 [[redirects]]
   from = "/*"
   to = "/index.html"
