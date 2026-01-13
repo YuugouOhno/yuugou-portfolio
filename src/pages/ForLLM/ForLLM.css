@@ -1,0 +1,52 @@
+#forllm-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1;
+  color: #000;
+  background: #000;
+  min-height: 100vh;
+  font-size: 1px;
+  user-select: none;
+}
+
+.llm-structured-data * {
+  font-size: 1px;
+}
+
+.llm-structured-data h1,
+.llm-structured-data h2,
+.llm-structured-data h3,
+.llm-structured-data p,
+.llm-structured-data dt,
+.llm-structured-data dd,
+.llm-structured-data li,
+.llm-structured-data a {
+  font-size: 1px;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+}
+
+.llm-structured-data dl,
+.llm-structured-data ul {
+  margin: 0;
+  padding: 0;
+}
+
+.llm-structured-data a {
+  color: #000;
+}
+
+.llm-structured-data footer {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+#llm-instructions {
+  background: transparent;
+  padding: 0;
+  border: none;
+}

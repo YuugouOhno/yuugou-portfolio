@@ -15,5 +15,14 @@ export function App() {
   // container.appendChild(Works())
   // container.appendChild(Contact())
 
+  // Hidden link for LLM/AI crawlers
+  const llmLink = document.createElement('a')
+  llmLink.href = '/forllm'
+  llmLink.className = 'llm-only'
+  llmLink.textContent = 'LLM・AI向け構造化情報はこちら'
+  llmLink.setAttribute('aria-hidden', 'true')
+  llmLink.setAttribute('tabindex', '-1')
+  container.appendChild(llmLink)
+
   return container
 }

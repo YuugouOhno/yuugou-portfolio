@@ -16,3 +16,17 @@ section {
   padding: 80px 40px;
   box-sizing: border-box;
 }
+
+/* Visually hidden but accessible to screen readers and crawlers */
+.llm-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  pointer-events: none;
+}
