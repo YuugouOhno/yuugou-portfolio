@@ -1,5 +1,4 @@
 import { Header } from './Header/Header.js'
-import { Hero } from './Hero/Hero.js'
 import { About } from './About/About.js'
 import { Works } from './Works/Works.js'
 import { Contact } from './Contact/Contact.js'
@@ -10,7 +9,6 @@ export function App() {
   container.id = 'app-content'
 
   container.appendChild(Header())
-  container.appendChild(Hero())
   // container.appendChild(About())
   // container.appendChild(Works())
   // container.appendChild(Contact())

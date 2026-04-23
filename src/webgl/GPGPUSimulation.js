@@ -124,8 +124,8 @@ export class GPGPUSimulation {
     uniforms.uTime = { value: 0.0 }
     uniforms.uDelta = { value: 0.0 }
 
-    // Bounds
-    uniforms.uBounds = { value: this.config.bounds }
+    // Sphere boundary
+    uniforms.uSphereRadius = { value: this.config.sphereRadius }
 
     // Boids parameters
     uniforms.uSeparationDistance = { value: 5.0 }

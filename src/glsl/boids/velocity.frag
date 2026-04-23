@@ -1,6 +1,6 @@
 uniform float uTime;
 uniform float uDelta;
-uniform vec3 uBounds;
+uniform float uSphereRadius;
 
 uniform float uSeparationDistance;
 uniform float uAlignmentDistance;
@@ -85,37 +85,21 @@ vec3 interactMouse(vec3 pos) {
   return vec3(0.0);
 }
 
-// Wall avoidance force
-vec3 avoidWalls(vec3 pos) {
-  vec3 force = vec3(0.0);
+// Sphere boundary avoidance — pushes fish inward when approaching the surface
+vec3 avoidSphere(vec3 pos) {
+  float dist = length(pos);
+  if (dist < 0.01) return vec3(0.0, 1.0, 0.0) * 2.0;
+
   float margin = 5.0;
-  float strength = 1.0;
+  float boundary = uSphereRadius - margin;
 
-  // X bounds
-  if (pos.x > uBounds.x - margin) {
-    force.x -= strength * (pos.x - (uBounds.x - margin)) / margin;
+  if (dist > boundary) {
+    float penetration = dist - boundary;
+    float strength = penetration / margin;
+    strength = strength * strength;
+    return -normalize(pos) * strength * 3.0;
   }
-  if (pos.x < -uBounds.x + margin) {
-    force.x += strength * ((-uBounds.x + margin) - pos.x) / margin;
-  }
-
-  // Y bounds
-  if (pos.y > uBounds.y - margin) {
-    force.y -= strength * (pos.y - (uBounds.y - margin)) / margin;
-  }
-  if (pos.y < -uBounds.y + margin) {
-    force.y += strength * ((-uBounds.y + margin) - pos.y) / margin;
-  }
-
-  // Z bounds
-  if (pos.z > uBounds.z - margin) {
-    force.z -= strength * (pos.z - (uBounds.z - margin)) / margin;
-  }
-  if (pos.z < -uBounds.z + margin) {
-    force.z += strength * ((-uBounds.z + margin) - pos.z) / margin;
-  }
-
-  return force;
+  return vec3(0.0);
 }
 
 void main() {
@@ -181,8 +165,8 @@ void main() {
   // Calculate steering forces
   vec3 acc = vec3(0.0);
 
-  // 1. Wall avoidance
-  acc += avoidWalls(position) * uWallWeight;
+  // 1. Sphere boundary avoidance
+  acc += avoidSphere(position) * uWallWeight;
 
   // 2. Mouse interaction
   acc += interactMouse(position) * uMouseWeight;

@@ -14,8 +14,17 @@ export function homePage() {
   // Mount page content
   appContainer.appendChild(App())
 
+  // Wheel scroll → camera orbit (skip if over control UI)
+  const onWheel = (e) => {
+    if (e.target.closest('#control-container')) return
+    e.preventDefault()
+    scene.orbit(e.deltaX, e.deltaY)
+  }
+  window.addEventListener('wheel', onWheel, { passive: false })
+
   // Return cleanup function
   return () => {
+    window.removeEventListener('wheel', onWheel)
     if (scene) {
       scene.dispose()
       scene = null

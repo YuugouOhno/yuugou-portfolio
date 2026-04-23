@@ -1,6 +1,8 @@
 import * as THREE from 'three'
+import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js'
 import { GPGPUSimulation } from './GPGPUSimulation.js'
 import { FishMesh } from './FishMesh.js'
+import { Hero } from '../components/Hero/Hero.js'
 
 export class Scene {
   constructor() {
@@ -15,9 +17,35 @@ export class Scene {
     // Configuration
     this.config = {
       boidCount: 4096, // Must be power of 2 (texture size = sqrt(boidCount))
-      bounds: new THREE.Vector3(50, 30, 50),
+      sphereRadius: 30,
       groupCount: 3,
     }
+
+    // Quaternion-based camera orbit: camera always looks at origin from radius 85.
+    // orientation/targetOrientation encode both position and roll on the sphere.
+    const _heroQ = this._computeLookAtQuat(new THREE.Vector3(
+      Math.sin(Math.PI * 0.18), Math.cos(Math.PI * 0.18), 0
+    ))
+    this.cam = {
+      orientation:       _heroQ.clone(),
+      targetOrientation: _heroQ.clone(),
+      radius:            85,
+    }
+
+    // Front (phi=0): 3 sections spaced 0.32π apart → arc gap > totalVerticalArc (0.93)
+    // Back (phi=π): 2 sections spaced 0.40π apart → even more room
+    this.sections = [
+      { name: 'hero',    theta: Math.PI * 0.18, phi: 0 },
+      { name: 'works',   theta: Math.PI * 0.50, phi: 0 },
+      { name: 'contact', theta: Math.PI * 0.82, phi: 0 },
+      { name: 'about',   theta: Math.PI * 0.30, phi: Math.PI },
+      { name: 'skills',  theta: Math.PI * 0.70, phi: Math.PI },
+    ]
+
+    this.cssRenderer = null
+    this.cssScene = null
+
+    this.speedDownTimeout = null
 
     // Mouse interaction
     this.mouse = new THREE.Vector2()
@@ -28,6 +56,10 @@ export class Scene {
     // Interaction settings
     this.interactionMode = 2 // 0: off, 1: repel, 2: attract
     this.interactionStrength = 4.5
+
+    // Bound event handler references for correct removal
+    this._onResize    = this.onResize.bind(this)
+    this._onMouseMove = this.onMouseMove.bind(this)
   }
 
   init() {
@@ -36,6 +68,7 @@ export class Scene {
     this.initCamera()
     this.initGPGPU()
     this.initFishMesh()
+    this.initCSS3D()
     this.initUI()
     this.addEventListeners()
     this.animate()
@@ -72,8 +105,22 @@ export class Scene {
       0.1,
       1000
     )
-    this.camera.position.set(0, 30, 80)
-    this.camera.lookAt(0, 0, 0)
+    this._updateCameraPosition()
+  }
+
+  // Build a lookAt quaternion: camera at normalizedPos (unit vector) looking at origin.
+  _computeLookAtQuat(normalizedPos) {
+    const m = new THREE.Matrix4()
+    m.lookAt(normalizedPos, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0))
+    return new THREE.Quaternion().setFromRotationMatrix(m)
+  }
+
+  // Apply stored quaternion directly — no lookAt() needed, no singularities.
+  _updateCameraPosition() {
+    const { orientation, radius } = this.cam
+    // Default position (0,0,radius) rotated by orientation = actual world position.
+    this.camera.position.set(0, 0, radius).applyQuaternion(orientation)
+    this.camera.quaternion.copy(orientation)
   }
 
   initGPGPU() {
@@ -91,6 +138,126 @@ export class Scene {
   initFishMesh() {
     // FishMesh already created in initGPGPU
     this.scene.add(this.fishMesh.mesh)
+  }
+
+  initCSS3D() {
+    this.cssRenderer = new CSS3DRenderer()
+    this.cssRenderer.setSize(window.innerWidth, window.innerHeight)
+    const cssEl = this.cssRenderer.domElement
+    cssEl.style.position = 'fixed'
+    cssEl.style.top = '0'
+    cssEl.style.left = '0'
+    cssEl.style.zIndex = '1'
+    cssEl.style.pointerEvents = 'none'
+    document.body.appendChild(cssEl)
+
+    this.cssScene = new THREE.Scene()
+    // sectionObjects: [{dir: Vector3, elements: HTMLElement[]}] for per-frame visibility culling
+    this.sectionObjects = []
+    this.createContentPanels()
+  }
+
+  createContentPanels() {
+    const contentRadius = 50
+    const numStrips = 20           // horizontal strips forming the cylindrical surface
+    const totalVerticalArc = 0.93  // radians (~53°) — fits within 0.32π≈1.0 front spacing
+
+    // 4× CSS resolution for sharp text — scale is divided by 4 accordingly
+    const panelCssWidth = 1200
+    const fovRad = (60 * Math.PI) / 180
+    const panelDist = this.cam.radius - contentRadius
+    const visibleWidth = 2 * Math.tan(fovRad / 2) * panelDist * (window.innerWidth / window.innerHeight)
+    const scale = visibleWidth / panelCssWidth
+
+    // Strip CSS height chosen so each strip's 3D height equals one arc segment
+    const arcLenPerStrip = (contentRadius * totalVerticalArc) / numStrips
+    const stripCssHeight = Math.round(arcLenPerStrip / scale)
+
+    for (const section of this.sections) {
+      const { theta, phi } = section
+
+      const sectionDir = new THREE.Vector3(
+        Math.sin(theta) * Math.cos(phi),
+        Math.cos(theta),
+        Math.sin(theta) * Math.sin(phi)
+      )
+
+      if (section.name === 'hero') {
+        const heroSection = Hero()
+        const card = heroSection.querySelector('.hero-card')
+        const heroObj = new CSS3DObject(card)
+        heroObj.position.copy(sectionDir.clone().multiplyScalar(contentRadius))
+        heroObj.quaternion.copy(this._computeLookAtQuat(sectionDir))
+        heroObj.scale.setScalar(0.07)
+        this.cssScene.add(heroObj)
+        this.sectionObjects.push({
+          dir:       sectionDir.clone(),
+          elements:  [card],
+          objects:   [heroObj],
+          stripDirs: [sectionDir.clone()],
+        })
+        continue
+      }
+
+      // "Right" axis = tangent along phi direction (for phi=0 this is (0,0,1))
+      const localRight = new THREE.Vector3(-Math.sin(phi), 0, Math.cos(phi)).normalize()
+      const sectionElements = []
+      const sectionCSSObjects = []
+      const sectionStripDirs  = []
+
+      for (let i = 0; i < numStrips; i++) {
+        // alpha > 0 → strip moves toward north (smaller theta)
+        const alpha = ((i + 0.5) / numStrips - 0.5) * totalVerticalArc
+        const stripTheta = theta - alpha
+
+        const stripDir = new THREE.Vector3(
+          Math.sin(stripTheta) * Math.cos(phi),
+          Math.cos(stripTheta),
+          Math.sin(stripTheta) * Math.sin(phi)
+        )
+
+        const el = document.createElement('div')
+        const isMiddle = (i === Math.floor(numStrips / 2))
+        el.style.cssText = `
+          width: ${panelCssWidth}px;
+          height: ${stripCssHeight}px;
+          background: rgba(10, 10, 40, 0.72);
+          border-left:  2px solid rgba(255,255,255,0.4);
+          border-right: 2px solid rgba(255,255,255,0.4);
+          ${i === 0              ? 'border-top:    2px solid rgba(255,255,255,0.4);' : ''}
+          ${i === numStrips - 1  ? 'border-bottom: 2px solid rgba(255,255,255,0.4);' : ''}
+          color: #fff;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-size: 80px;
+          font-weight: 600;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          display: flex;
+          align-items: center;
+          padding: 0 80px;
+          box-sizing: border-box;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+        `
+        if (isMiddle) el.textContent = section.name
+
+        const obj = new CSS3DObject(el)
+        obj.position.copy(stripDir.clone().multiplyScalar(contentRadius))
+        obj.quaternion.copy(this._computeLookAtQuat(stripDir))
+        obj.scale.setScalar(scale)
+        this.cssScene.add(obj)
+        sectionElements.push(el)
+        sectionCSSObjects.push(obj)
+        sectionStripDirs.push(stripDir.clone())
+      }
+
+      this.sectionObjects.push({
+        dir:       sectionDir.clone(),
+        elements:  sectionElements,
+        objects:   sectionCSSObjects,
+        stripDirs: sectionStripDirs,
+      })
+    }
   }
 
   initUI() {
@@ -372,11 +539,9 @@ export class Scene {
     })
 
     // Initial speed animation: start fast, then slow down
-    console.log('[Boids] Starting with speed 40')
     this.gpgpu.setSpeed(40, 10)
-    setTimeout(() => {
-      console.log('[Boids] Beginning slowdown animation: 40 -> 10 over 1 second')
-      this.animateSpeedDown(40, 10, 1000, speedSlider)
+    this.speedDownTimeout = setTimeout(() => {
+      if (!this.disposed) this.animateSpeedDown(40, 10, 1000, speedSlider)
     }, 3000)
   }
 
@@ -393,20 +558,16 @@ export class Scene {
       slider.value = currentSpeed
       document.getElementById('speed-value').textContent = Math.round(currentSpeed)
 
-      if (progress < 1) {
+      if (progress < 1 && !this.disposed) {
         requestAnimationFrame(animate)
-      } else {
-        console.log('[Boids] Slowdown complete, speed now 10')
       }
     }
     requestAnimationFrame(animate)
   }
 
   addEventListeners() {
-    window.addEventListener('resize', this.onResize.bind(this))
-    window.addEventListener('mousemove', this.onMouseMove.bind(this))
-    window.addEventListener('mousedown', this.onMouseDown.bind(this))
-    window.addEventListener('mouseup', this.onMouseUp.bind(this))
+    window.addEventListener('resize', this._onResize)
+    window.addEventListener('mousemove', this._onMouseMove)
   }
 
   onMouseMove(event) {
@@ -439,13 +600,6 @@ export class Scene {
     }
   }
 
-  onMouseDown() {
-    // No longer used
-  }
-
-  onMouseUp() {
-    // No longer used
-  }
 
   onResize() {
     const width = window.innerWidth
@@ -455,6 +609,24 @@ export class Scene {
     this.camera.updateProjectionMatrix()
 
     this.renderer.setSize(width, height)
+    if (this.cssRenderer) this.cssRenderer.setSize(width, height)
+  }
+
+  // Camera-local orbit:
+  //   vertical   → pitch around camera's local X (right)  → pole-to-pole on current meridian
+  //   horizontal → yaw   around camera's local Y (up)     → orbit along current "equator"
+  orbit(deltaX, deltaY) {
+    const sensitivity = 0.003
+    const cappedDY = Math.sign(deltaY) * Math.min(Math.abs(deltaY), 100)
+    const cappedDX = Math.sign(deltaX) * Math.min(Math.abs(deltaX), 100)
+
+    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.cam.targetOrientation)
+    const worldY   = new THREE.Vector3(0, 1, 0)
+
+    const vertQuat  = new THREE.Quaternion().setFromAxisAngle(camRight, cappedDY * sensitivity)
+    const horizQuat = new THREE.Quaternion().setFromAxisAngle(worldY,   cappedDX * sensitivity)
+
+    this.cam.targetOrientation.premultiply(horizQuat).premultiply(vertQuat)
   }
 
   animate() {
@@ -462,8 +634,13 @@ export class Scene {
 
     this.animationFrameId = requestAnimationFrame(this.animate.bind(this))
 
-    const delta = this.clock.getDelta()
+    const delta   = this.clock.getDelta()
     const elapsed = this.clock.getElapsedTime()
+
+    // Smooth camera slerp toward target (exponential, frame-rate independent)
+    const lerpFactor = 1 - Math.exp(-8 * delta)
+    this.cam.orientation.slerp(this.cam.targetOrientation, lerpFactor)
+    this._updateCameraPosition()
 
     // Update GPGPU simulation
     if (this.gpgpu) {
@@ -476,6 +653,32 @@ export class Scene {
     }
 
     this.renderer.render(this.scene, this.camera)
+
+    // Depth-cull CSS3D panels and orient them at the moment they become visible,
+    // so the user never sees a panel in the wrong orientation.
+    if (this.sectionObjects?.length) {
+      const camPosNorm = this.camera.position.clone().normalize()
+      // Quantize to north-up or south-up only — prevents tilted panels
+      const rawUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.cam.orientation)
+      const upHint = rawUp.y >= 0 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, -1, 0)
+
+      for (const secObj of this.sectionObjects) {
+        const isVisible = secObj.dir.dot(camPosNorm) > 0
+
+        if (isVisible) {
+          secObj.objects.forEach((obj, i) => {
+            const posDir = secObj.stripDirs[i]
+            const m = new THREE.Matrix4()
+            m.lookAt(posDir, new THREE.Vector3(0, 0, 0), upHint)
+            obj.quaternion.setFromRotationMatrix(m)
+          })
+        }
+
+        for (const el of secObj.elements) el.style.visibility = isVisible ? '' : 'hidden'
+      }
+    }
+
+    if (this.cssRenderer) this.cssRenderer.render(this.cssScene, this.camera)
   }
 
   dispose() {
@@ -486,11 +689,12 @@ export class Scene {
       cancelAnimationFrame(this.animationFrameId)
     }
 
-    // Remove event listeners
-    window.removeEventListener('resize', this.onResize.bind(this))
-    window.removeEventListener('mousemove', this.onMouseMove.bind(this))
-    window.removeEventListener('mousedown', this.onMouseDown.bind(this))
-    window.removeEventListener('mouseup', this.onMouseUp.bind(this))
+    // Cancel pending timers
+    clearTimeout(this.speedDownTimeout)
+
+    // Remove event listeners (same references as registered)
+    window.removeEventListener('resize', this._onResize)
+    window.removeEventListener('mousemove', this._onMouseMove)
 
     // Dispose GPGPU
     if (this.gpgpu) {
@@ -516,6 +720,12 @@ export class Scene {
           }
         }
       })
+    }
+
+    // Dispose CSS3D renderer
+    if (this.cssRenderer) {
+      this.cssRenderer.domElement.remove()
+      this.cssRenderer = null
     }
 
     // Dispose renderer

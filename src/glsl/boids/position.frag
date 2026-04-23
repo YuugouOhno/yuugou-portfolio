@@ -1,6 +1,6 @@
 uniform float uTime;
 uniform float uDelta;
-uniform vec3 uBounds;
+uniform float uSphereRadius;
 
 void main() {
   vec2 uv = gl_FragCoord.xy / resolution.xy;
@@ -10,6 +10,12 @@ void main() {
 
   // Update position based on velocity
   pos.xyz += vel.xyz * uDelta;
+
+  // Hard clamp: never escape the sphere
+  float posLen = length(pos.xyz);
+  if (posLen > uSphereRadius) {
+    pos.xyz = normalize(pos.xyz) * uSphereRadius;
+  }
 
   // Update animation phase
   pos.w += uDelta * 5.0; // Animation speed
