@@ -32,15 +32,16 @@ export class Scene {
       radius:            85,
     }
 
-    // Front (phi=0): 3 sections spaced 0.32π apart → arc gap > totalVerticalArc (0.93)
-    // Back (phi=π): 2 sections spaced 0.40π apart → even more room
-    this.sections = [
-      { name: 'hero',    theta: Math.PI * 0.18, phi: 0 },
-      { name: 'works',   theta: Math.PI * 0.50, phi: 0 },
-      { name: 'contact', theta: Math.PI * 0.82, phi: 0 },
-      { name: 'about',   theta: Math.PI * 0.30, phi: Math.PI },
-      { name: 'skills',  theta: Math.PI * 0.70, phi: Math.PI },
+    // Depth-based content: each item appears when accumulatedTheta ≈ depth.
+    // Spacing ~0.8π ≈ 2.5 rad; totalVerticalArc=0.93 fits within each gap.
+    this.contentItems = [
+      { name: 'hero',    depth: 0              },
+      { name: 'works',   depth: Math.PI * 0.8  },
+      { name: 'contact', depth: Math.PI * 1.6  },
+      { name: 'about',   depth: Math.PI * 2.4  },
+      { name: 'skills',  depth: Math.PI * 3.2  },
     ]
+    this.accumulatedTheta = 0
 
     this.cssRenderer = null
     this.cssScene = null
@@ -152,80 +153,63 @@ export class Scene {
     document.body.appendChild(cssEl)
 
     this.cssScene = new THREE.Scene()
-    // sectionObjects: [{dir: Vector3, elements: HTMLElement[]}] for per-frame visibility culling
-    this.sectionObjects = []
+    this.contentObjects = []
     this.createContentPanels()
   }
 
   createContentPanels() {
     const contentRadius = 50
-    const numStrips = 20           // horizontal strips forming the cylindrical surface
-    const totalVerticalArc = 0.93  // radians (~53°) — fits within 0.32π≈1.0 front spacing
+    const numStrips = 20
+    const totalVerticalArc = 0.93
+    const visibleWindow = totalVerticalArc * 1.5
 
-    // 4× CSS resolution for sharp text — scale is divided by 4 accordingly
     const panelCssWidth = 1200
     const fovRad = (60 * Math.PI) / 180
     const panelDist = this.cam.radius - contentRadius
     const visibleWidth = 2 * Math.tan(fovRad / 2) * panelDist * (window.innerWidth / window.innerHeight)
     const scale = visibleWidth / panelCssWidth
-
-    // Strip CSS height chosen so each strip's 3D height equals one arc segment
     const arcLenPerStrip = (contentRadius * totalVerticalArc) / numStrips
     const stripCssHeight = Math.round(arcLenPerStrip / scale)
 
-    for (const section of this.sections) {
-      const { theta, phi } = section
+    // Precomputed per-strip angle offsets from panel center (reused for all items)
+    const stripAlphas = Array.from({ length: numStrips }, (_, i) =>
+      ((i + 0.5) / numStrips - 0.5) * totalVerticalArc
+    )
 
-      const sectionDir = new THREE.Vector3(
-        Math.sin(theta) * Math.cos(phi),
-        Math.cos(theta),
-        Math.sin(theta) * Math.sin(phi)
-      )
+    this._panelCfg = { contentRadius, visibleWindow }
 
-      if (section.name === 'hero') {
+    for (const item of this.contentItems) {
+      if (item.name === 'hero') {
         const heroSection = Hero()
         const card = heroSection.querySelector('.hero-card')
+        card.style.visibility = 'hidden'
         const heroObj = new CSS3DObject(card)
-        heroObj.position.copy(sectionDir.clone().multiplyScalar(contentRadius))
-        heroObj.quaternion.copy(this._computeLookAtQuat(sectionDir))
         heroObj.scale.setScalar(0.07)
         this.cssScene.add(heroObj)
-        this.sectionObjects.push({
-          dir:       sectionDir.clone(),
-          elements:  [card],
-          objects:   [heroObj],
-          stripDirs: [sectionDir.clone()],
+        this.contentObjects.push({
+          depth:      item.depth,
+          name:       item.name,
+          elements:   [card],
+          objects:    [heroObj],
+          stripAlphas:[0],
         })
         continue
       }
 
-      // "Right" axis = tangent along phi direction (for phi=0 this is (0,0,1))
-      const localRight = new THREE.Vector3(-Math.sin(phi), 0, Math.cos(phi)).normalize()
-      const sectionElements = []
-      const sectionCSSObjects = []
-      const sectionStripDirs  = []
+      const elements = []
+      const objects  = []
 
       for (let i = 0; i < numStrips; i++) {
-        // alpha > 0 → strip moves toward north (smaller theta)
-        const alpha = ((i + 0.5) / numStrips - 0.5) * totalVerticalArc
-        const stripTheta = theta - alpha
-
-        const stripDir = new THREE.Vector3(
-          Math.sin(stripTheta) * Math.cos(phi),
-          Math.cos(stripTheta),
-          Math.sin(stripTheta) * Math.sin(phi)
-        )
-
         const el = document.createElement('div')
-        const isMiddle = (i === Math.floor(numStrips / 2))
+        const isMiddle = i === Math.floor(numStrips / 2)
         el.style.cssText = `
           width: ${panelCssWidth}px;
           height: ${stripCssHeight}px;
           background: rgba(10, 10, 40, 0.72);
           border-left:  2px solid rgba(255,255,255,0.4);
           border-right: 2px solid rgba(255,255,255,0.4);
-          ${i === 0              ? 'border-top:    2px solid rgba(255,255,255,0.4);' : ''}
-          ${i === numStrips - 1  ? 'border-bottom: 2px solid rgba(255,255,255,0.4);' : ''}
+          ${i === 0             ? 'border-top:    2px solid rgba(255,255,255,0.4);' : ''}
+          ${i === numStrips - 1 ? 'border-bottom: 2px solid rgba(255,255,255,0.4);' : ''}
           color: #fff;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           font-size: 80px;
@@ -238,24 +222,23 @@ export class Scene {
           box-sizing: border-box;
           backface-visibility: hidden;
           -webkit-backface-visibility: hidden;
+          visibility: hidden;
         `
-        if (isMiddle) el.textContent = section.name
+        if (isMiddle) el.textContent = item.name
 
         const obj = new CSS3DObject(el)
-        obj.position.copy(stripDir.clone().multiplyScalar(contentRadius))
-        obj.quaternion.copy(this._computeLookAtQuat(stripDir))
         obj.scale.setScalar(scale)
         this.cssScene.add(obj)
-        sectionElements.push(el)
-        sectionCSSObjects.push(obj)
-        sectionStripDirs.push(stripDir.clone())
+        elements.push(el)
+        objects.push(obj)
       }
 
-      this.sectionObjects.push({
-        dir:       sectionDir.clone(),
-        elements:  sectionElements,
-        objects:   sectionCSSObjects,
-        stripDirs: sectionStripDirs,
+      this.contentObjects.push({
+        depth:      item.depth,
+        name:       item.name,
+        elements,
+        objects,
+        stripAlphas,
       })
     }
   }
@@ -627,6 +610,7 @@ export class Scene {
     const horizQuat = new THREE.Quaternion().setFromAxisAngle(worldY,   cappedDX * sensitivity)
 
     this.cam.targetOrientation.premultiply(horizQuat).premultiply(vertQuat)
+    this.accumulatedTheta += cappedDY * sensitivity
   }
 
   animate() {
@@ -654,27 +638,31 @@ export class Scene {
 
     this.renderer.render(this.scene, this.camera)
 
-    // Depth-cull CSS3D panels and orient them at the moment they become visible,
-    // so the user never sees a panel in the wrong orientation.
-    if (this.sectionObjects?.length) {
-      const camPosNorm = this.camera.position.clone().normalize()
-      // Quantize to north-up or south-up only — prevents tilted panels
-      const rawUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.cam.orientation)
-      const upHint = rawUp.y >= 0 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, -1, 0)
+    // Place CSS3D content relative to camera forward direction based on accumulated scroll depth.
+    if (this.contentObjects?.length) {
+      const { contentRadius, visibleWindow } = this._panelCfg
 
-      for (const secObj of this.sectionObjects) {
-        const isVisible = secObj.dir.dot(camPosNorm) > 0
+      const camFwd   = this.camera.position.clone().normalize()
+      const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.cam.orientation)
 
-        if (isVisible) {
-          secObj.objects.forEach((obj, i) => {
-            const posDir = secObj.stripDirs[i]
-            const m = new THREE.Matrix4()
-            m.lookAt(posDir, new THREE.Vector3(0, 0, 0), upHint)
-            obj.quaternion.setFromRotationMatrix(m)
-          })
+      for (const item of this.contentObjects) {
+        const depthDiff = item.depth - this.accumulatedTheta
+        const isVisible = Math.abs(depthDiff) < visibleWindow
+
+        for (const el of item.elements) {
+          el.style.visibility = isVisible ? '' : 'hidden'
         }
 
-        for (const el of secObj.elements) el.style.visibility = isVisible ? '' : 'hidden'
+        if (isVisible) {
+          item.objects.forEach((obj, i) => {
+            const angle = depthDiff + item.stripAlphas[i]
+            const offsetQuat = new THREE.Quaternion().setFromAxisAngle(camRight, angle)
+            const stripDir   = camFwd.clone().applyQuaternion(offsetQuat)
+
+            obj.position.copy(stripDir.clone().multiplyScalar(contentRadius))
+            obj.quaternion.copy(this.cam.orientation)
+          })
+        }
       }
     }
 
