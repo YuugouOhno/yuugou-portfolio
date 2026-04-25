@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { GPGPUSimulation } from './GPGPUSimulation.js'
 import { FishMesh } from './FishMesh.js'
 import { Hero } from '../components/Hero/Hero.js'
@@ -17,8 +18,9 @@ export class Scene {
     // Configuration
     this.config = {
       boidCount: 4096, // Must be power of 2 (texture size = sqrt(boidCount))
-      sphereRadius: 30,
-      groupCount: 3,
+      sphereRadius: 45,
+      groupCount: 5,    // 0-2: normal fish, 3: density shark, 4: isolation shark
+      sharkCount: 2,
     }
 
     // Quaternion-based camera orbit: camera always looks at origin from radius 85.
@@ -70,6 +72,7 @@ export class Scene {
     this.initGPGPU()
     this.initFishMesh()
     this.initCSS3D()
+    this.initWhale()
     this.initUI()
     this.addEventListeners()
     this.animate()
@@ -139,6 +142,28 @@ export class Scene {
   initFishMesh() {
     // FishMesh already created in initGPGPU
     this.scene.add(this.fishMesh.mesh)
+  }
+
+  initWhale() {
+    this.whaleAngle = 0
+    this.whalePos   = new THREE.Vector3()
+    this.whaleMesh  = null
+    this.whaleAnimMixer = null
+    this.whaleOrbitRadius = 40
+
+    const loader = new GLTFLoader()
+    loader.load('/model/whale.glb', (gltf) => {
+      if (this.disposed) return
+      const whale = gltf.scene
+      whale.scale.setScalar(1.0)
+      this.scene.add(whale)
+      this.whaleMesh = whale
+
+      if (gltf.animations.length > 0) {
+        this.whaleAnimMixer = new THREE.AnimationMixer(whale)
+        this.whaleAnimMixer.clipAction(gltf.animations[0]).play()
+      }
+    })
   }
 
   initCSS3D() {
@@ -636,6 +661,25 @@ export class Scene {
       this.fishMesh.update(elapsed)
     }
 
+    // Update whale circular orbit
+    this.whaleAngle += delta * 0.35
+    const wr = this.whaleOrbitRadius
+    this.whalePos.set(
+      Math.cos(this.whaleAngle) * wr,
+      0,
+      Math.sin(this.whaleAngle) * wr
+    )
+    if (this.whaleMesh) {
+      this.whaleMesh.position.copy(this.whalePos)
+      this.whaleMesh.lookAt(
+        Math.cos(this.whaleAngle + 0.01) * wr,
+        0,
+        Math.sin(this.whaleAngle + 0.01) * wr
+      )
+    }
+    if (this.whaleAnimMixer) this.whaleAnimMixer.update(delta)
+    if (this.gpgpu) this.gpgpu.setPredatorPosition(this.whalePos)
+
     this.renderer.render(this.scene, this.camera)
 
     // Place CSS3D content relative to camera forward direction based on accumulated scroll depth.
@@ -692,6 +736,20 @@ export class Scene {
     // Dispose fish mesh
     if (this.fishMesh) {
       this.fishMesh.dispose()
+    }
+
+    // Dispose whale
+    if (this.whaleMesh) {
+      this.scene.remove(this.whaleMesh)
+      this.whaleMesh.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose()
+        if (obj.material) obj.material.dispose()
+      })
+      this.whaleMesh = null
+    }
+    if (this.whaleAnimMixer) {
+      this.whaleAnimMixer.stopAllAction()
+      this.whaleAnimMixer = null
     }
 
     // Dispose scene

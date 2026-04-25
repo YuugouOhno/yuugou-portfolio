@@ -148,6 +148,11 @@ export class GPGPUSimulation {
     uniforms.uMouseRayDir = { value: new THREE.Vector3(0, 0, -1) }
     uniforms.uMouseWeight = { value: 0.0 }
     uniforms.uInteractionType = { value: 0 } // 0=none, 1=avoid, 2=attract
+
+    // Predator (whale) flee
+    uniforms.uFleeDistance = { value: 30.0 }
+    uniforms.uFleeWeight   = { value: 10.0 }
+    uniforms.uPredatorPos  = { value: new THREE.Vector3(9999, 9999, 9999) }
   }
 
   update(delta, elapsed) {
@@ -173,6 +178,11 @@ export class GPGPUSimulation {
 
   getVelocityTexture() {
     return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture
+  }
+
+  setPredatorPosition(pos) {
+    const velUniforms = this.velocityVariable.material.uniforms
+    velUniforms.uPredatorPos.value.copy(pos)
   }
 
   setMouseInteraction(position, rayDir, type, weight) {

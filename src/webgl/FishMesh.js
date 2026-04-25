@@ -19,8 +19,10 @@ export class FishMesh {
     const count = this.config.boidCount
     const textureSize = Math.ceil(Math.sqrt(count))
     const groupCount = this.config.groupCount || 3
+    const sharkCount = this.config.sharkCount || 0
+    const normalGroupCount = groupCount - sharkCount // groups 0..normalGroupCount-1 are fish
 
-    // Group colors - purple spectrum
+    // Group colors - purple spectrum (for normal fish groups 0-2)
     const groupColors = [
       new THREE.Color().setHSL(0.92, 0.8, 0.55), // Red-Purple (Magenta)
       new THREE.Color().setHSL(0.83, 0.8, 0.55), // Purple
@@ -51,26 +53,31 @@ export class FishMesh {
       references[i * 2 + 0] = x
       references[i * 2 + 1] = y
 
-      // Assign group ID (same logic as GPGPUSimulation)
-      const groupId = Math.floor(Math.random() * groupCount)
+      const isShark = i < sharkCount
+      // shark i → group (normalGroupCount + i): shark0=group3(density), shark1=group4(isolation)
+      const groupId = isShark ? (normalGroupCount + i) : Math.floor(Math.random() * normalGroupCount)
       groupIds[i] = groupId
 
-      // Color based on group
-      const baseColor = groupColors[groupId % groupColors.length]
-      // Add slight variation
-      const hsl = {}
-      baseColor.getHSL(hsl)
-      const color = new THREE.Color().setHSL(
-        hsl.h + (Math.random() - 0.5) * 0.03,
-        hsl.s + (Math.random() - 0.5) * 0.1,
-        hsl.l + (Math.random() - 0.5) * 0.1
-      )
+      let color
+      if (isShark) {
+        // group3 (density): blue-gray / group4 (isolation): warm gray
+        const h = groupId === normalGroupCount ? 0.6 : 0.08
+        color = new THREE.Color().setHSL(h, 0.15, 0.42 + (Math.random() - 0.5) * 0.08)
+        sizes[i] = 3.0
+      } else {
+        const baseColor = groupColors[groupId % groupColors.length]
+        const hsl = {}
+        baseColor.getHSL(hsl)
+        color = new THREE.Color().setHSL(
+          hsl.h + (Math.random() - 0.5) * 0.03,
+          hsl.s + (Math.random() - 0.5) * 0.1,
+          hsl.l + (Math.random() - 0.5) * 0.1
+        )
+        sizes[i] = 0.8 + Math.random() * 0.4
+      }
       colors[i * 3 + 0] = color.r
       colors[i * 3 + 1] = color.g
       colors[i * 3 + 2] = color.b
-
-      // Random size variation
-      sizes[i] = 0.8 + Math.random() * 0.4
 
       // Random seed for individual variation
       seeds[i] = Math.random()
