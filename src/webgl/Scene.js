@@ -35,13 +35,13 @@ export class Scene {
     }
 
     // Depth-based content: each item appears when accumulatedTheta ≈ depth.
-    // Spacing ~0.8π ≈ 2.5 rad; totalVerticalArc=0.93 fits within each gap.
+    // loop:true items repeat every `period` radians (default 2π).
     this.contentItems = [
-      { name: 'hero',    depth: 0              },
-      { name: 'works',   depth: Math.PI * 0.8  },
-      { name: 'contact', depth: Math.PI * 1.6  },
-      { name: 'about',   depth: Math.PI * 2.4  },
-      { name: 'skills',  depth: Math.PI * 3.2  },
+      { name: 'hero', depth: 0, loop: true, period: Math.PI * 2 },
+      // { name: 'works',   depth: Math.PI * 0.8  },
+      // { name: 'contact', depth: Math.PI * 1.6  },
+      // { name: 'about',   depth: Math.PI * 2.4  },
+      // { name: 'skills',  depth: Math.PI * 3.2  },
     ]
     this.accumulatedTheta = 0
 
@@ -213,6 +213,8 @@ export class Scene {
         this.cssScene.add(heroObj)
         this.contentObjects.push({
           depth:      item.depth,
+          loop:       item.loop ?? false,
+          period:     item.period ?? Math.PI * 2,
           name:       item.name,
           elements:   [card],
           objects:    [heroObj],
@@ -260,6 +262,8 @@ export class Scene {
 
       this.contentObjects.push({
         depth:      item.depth,
+        loop:       item.loop ?? false,
+        period:     item.period ?? Math.PI * 2,
         name:       item.name,
         elements,
         objects,
@@ -690,7 +694,15 @@ export class Scene {
       const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.cam.orientation)
 
       for (const item of this.contentObjects) {
-        const depthDiff = item.depth - this.accumulatedTheta
+        let depthDiff
+        if (item.loop) {
+          const period = item.period ?? Math.PI * 2
+          const phase = ((this.accumulatedTheta - item.depth) % period + period) % period
+          // Wrap to [-period/2, period/2] so nearest occurrence is always used
+          depthDiff = phase <= period / 2 ? -phase : period - phase
+        } else {
+          depthDiff = item.depth - this.accumulatedTheta
+        }
         const isVisible = Math.abs(depthDiff) < visibleWindow
 
         for (const el of item.elements) {
