@@ -103,6 +103,21 @@ void main() {
 
   bool isShark = myGroup > 2.49; // group 3 or 4
 
+  // Per-shark burst speed: use UV as unique seed, pseudo-random period/phase
+  float sharkSpeedMult = 1.0;
+  if (isShark) {
+    sharkSpeedMult = 3.0; // sharks are 3x faster by default
+    float seed = fract(sin(uv.x * 127.1 + uv.y * 311.7) * 43758.5);
+    float period      = 4.0 + seed * 6.0;  // 4–10 sec cycle per shark
+    float burstLen    = 0.4 + seed * 0.8;  // 0.4–1.2 sec burst
+    float phaseOffset = seed * period;
+    float t = mod(uTime + phaseOffset, period);
+    if (t < burstLen) {
+      float ramp = smoothstep(0.0, burstLen * 0.3, t) * smoothstep(burstLen, burstLen * 0.7, t);
+      sharkSpeedMult = 3.0 + ramp * 2.0; // up to 5x during burst
+    }
+  }
+
   vec3 acc = vec3(0.0);
   acc += avoidSphere(position) * uWallWeight;
 
@@ -143,7 +158,7 @@ void main() {
 
     vec3 toTarget = target - position;
     if (length(toTarget) > 0.1) {
-      acc += normalize(toTarget) * 5.0;
+      acc += normalize(toTarget) * 5.0 * sharkSpeedMult;
     }
 
   } else {
@@ -238,9 +253,10 @@ void main() {
 
   velocity += acc * uDelta;
 
+  float effectiveMaxSpeed = uMaxSpeed * sharkSpeedMult;
   float speed = length(velocity);
-  if (speed > uMaxSpeed) {
-    velocity = normalize(velocity) * uMaxSpeed;
+  if (speed > effectiveMaxSpeed) {
+    velocity = normalize(velocity) * effectiveMaxSpeed;
   } else if (speed < uMinSpeed) {
     velocity = normalize(velocity) * uMinSpeed;
   }
