@@ -1,5 +1,6 @@
-# Static files for crawlers/LLM (before SPA fallback)
+# Static page for crawlers/LLM
 /forllm    /forllm.html   200
 
-# SPA fallback
-/*    /index.html   200
+# NOTE: SPA fallback (/* -> /index.html) is handled by wrangler.jsonc
+# assets.not_found_handling = "single-page-application".
+# Cloudflare Workers Static Assets rejects a catch-all 200 rewrite as an infinite loop.
