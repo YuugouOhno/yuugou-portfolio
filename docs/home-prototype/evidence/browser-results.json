@@ -1,0 +1,26 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "node": "v22.21.1"
+  },
+  "results": [],
+  "status": "failed or blocked",
+  "error": "Chrome launch failed before page creation: Target page, context or browser has been closed; process exited with SIGABRT.",
+  "serverAttempt": "npm run dev -- --host 127.0.0.1: listen EPERM 127.0.0.1:5173",
+  "plannedViewports": [
+    {
+      "kind": "desktop headless browser",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "kind": "mobile emulation, not physical device",
+      "width": 390,
+      "height": 844,
+      "deviceScaleFactor": 3,
+      "hasTouch": true
+    }
+  ],
+  "screenshots": [],
+  "physicalDevicesVerified": false
+}

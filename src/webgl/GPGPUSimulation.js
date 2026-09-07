@@ -1,174 +1,62 @@
 import * as THREE from 'three'
 import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js'
-
-// Shader imports
-import positionFragment from '../glsl/boids/position.frag?raw'
-import velocityFragment from '../glsl/boids/velocity.frag?raw'
+import positionFragment from '../glsl/boids/home-position.frag?raw'
+import velocityFragment from '../glsl/boids/home-velocity.frag?raw'
 
 export class GPGPUSimulation {
-  constructor(renderer, config, groupIds = null) {
-    this.renderer = renderer
-    this.config = config
-    this.groupIds = groupIds
-
-    // Texture size (must be power of 2)
+  constructor(renderer, config, groupIds) {
+    Object.assign(this, { renderer, config, groupIds })
     this.textureSize = Math.ceil(Math.sqrt(config.boidCount))
-
-    this.gpuCompute = null
-
-    // Variables
-    this.positionVariable = null
-    this.velocityVariable = null
   }
 
-  init() {
-    this.gpuCompute = new GPUComputationRenderer(
-      this.textureSize,
-      this.textureSize,
-      this.renderer
-    )
-
-    // Check for WebGL 2 support
-    if (!this.renderer.capabilities.isWebGL2) {
-      console.error('WebGL 2 is required for GPGPU simulation')
-      return
+  init(targets, released, worldWidth) {
+    if (!this.renderer.capabilities.isWebGL2 || !this.renderer.extensions.has('EXT_color_buffer_float')) {
+      throw new Error('Home fish need WebGL 2 float render targets')
     }
-
-    // Create initial textures
-    const positionTexture = this.gpuCompute.createTexture()
-    const velocityTexture = this.gpuCompute.createTexture()
-
-    // Fill textures with initial data
-    this.fillPositionTexture(positionTexture)
-    this.fillVelocityTexture(velocityTexture)
-
-    // Add variables
-    this.positionVariable = this.gpuCompute.addVariable(
-      'texturePosition',
-      positionFragment,
-      positionTexture
-    )
-
-    this.velocityVariable = this.gpuCompute.addVariable(
-      'textureVelocity',
-      velocityFragment,
-      velocityTexture
-    )
-
-    // Set dependencies
-    this.gpuCompute.setVariableDependencies(this.positionVariable, [
-      this.positionVariable,
-      this.velocityVariable,
-    ])
-
-    this.gpuCompute.setVariableDependencies(this.velocityVariable, [
-      this.positionVariable,
-      this.velocityVariable,
-    ])
-
-    // Add uniforms
-    this.addUniforms(this.positionVariable)
-    this.addUniforms(this.velocityVariable)
-
-    // Initialize
-    const error = this.gpuCompute.init()
-    if (error !== null) {
-      console.error('GPUComputationRenderer error:', error)
-    }
-  }
-
-  fillPositionTexture(texture) {
-    const data = texture.image.data
-
-    // Start in a tight cluster (10% of bounds) for dramatic spread effect
-    const spawnRadius = 8
-
-    for (let i = 0; i < data.length; i += 4) {
-      // Random position in small sphere at center
-      const theta = Math.random() * Math.PI * 2
-      const phi = Math.acos(2 * Math.random() - 1)
-      const r = Math.random() * spawnRadius
-
-      data[i + 0] = r * Math.sin(phi) * Math.cos(theta) // x
-      data[i + 1] = r * Math.sin(phi) * Math.sin(theta) // y
-      data[i + 2] = r * Math.cos(phi) // z
-      data[i + 3] = Math.random() * Math.PI * 2 // animation phase
-    }
-  }
-
-  fillVelocityTexture(texture) {
-    const data = texture.image.data
-    const groupCount = this.config.groupCount || 3
-
-    for (let i = 0; i < data.length; i += 4) {
-      const boidIndex = i / 4
-
-      // Random initial velocity
-      data[i + 0] = (Math.random() - 0.5) * 2 // vx
-      data[i + 1] = (Math.random() - 0.5) * 2 // vy
-      data[i + 2] = (Math.random() - 0.5) * 2 // vz
-
-      // Use shared group IDs if available, otherwise random
-      if (this.groupIds && boidIndex < this.groupIds.length) {
-        data[i + 3] = this.groupIds[boidIndex]
-      } else {
-        data[i + 3] = Math.floor(Math.random() * groupCount)
+    this.gpuCompute = new GPUComputationRenderer(this.textureSize, this.textureSize, this.renderer)
+    this.targetTexture = this.gpuCompute.createTexture()
+    this.targetTexture.image.data.set(targets)
+    this.targetTexture.needsUpdate = true
+    const positions = this.gpuCompute.createTexture()
+    const velocities = this.gpuCompute.createTexture()
+    positions.image.data.set(targets)
+    for (let i = 0; i < targets.length / 4; i++) {
+      const offset = i * 4
+      velocities.image.data[offset] = .01
+      velocities.image.data[offset + 3] = this.groupIds[i]
+      if (released >= 1) {
+        const side = i % 2 ? 1 : -1
+        positions.image.data[offset] = side * worldWidth * (.7 + (i % 11) / 30)
+        positions.image.data[offset + 1] = ((i * .618) % 1 - .5) * 130
+        positions.image.data[offset + 2] = i % 5 ? -160 : -35
       }
     }
+    this.positionVariable = this.gpuCompute.addVariable('texturePosition', positionFragment, positions)
+    this.velocityVariable = this.gpuCompute.addVariable('textureVelocity', velocityFragment, velocities)
+    for (const variable of [this.positionVariable, this.velocityVariable]) {
+      this.gpuCompute.setVariableDependencies(variable, [this.positionVariable, this.velocityVariable])
+      Object.assign(variable.material.uniforms, {
+        uDelta: { value: 0 }, uTime: { value: 0 }, uRelease: { value: released },
+        uTargets: { value: this.targetTexture }, uWorldWidth: { value: worldWidth },
+      })
+    }
+    const error = this.gpuCompute.init()
+    if (error) throw new Error(error)
   }
 
-  addUniforms(variable) {
-    const uniforms = variable.material.uniforms
-
-    // Time
-    uniforms.uTime = { value: 0.0 }
-    uniforms.uDelta = { value: 0.0 }
-
-    // Sphere boundary
-    uniforms.uSphereRadius = { value: this.config.sphereRadius }
-
-    // Boids parameters
-    uniforms.uSeparationDistance = { value: 5.0 }
-    uniforms.uAlignmentDistance = { value: 10.0 }
-    uniforms.uCohesionDistance = { value: 15.0 }
-
-    uniforms.uSeparationWeight = { value: 1.5 }
-    uniforms.uAlignmentWeight = { value: 1.0 }
-    uniforms.uCohesionWeight = { value: 1.0 }
-
-    // Speed limits
-    uniforms.uMaxSpeed = { value: 20.0 }
-    uniforms.uMinSpeed = { value: 5.0 }
-
-    // Wall avoidance
-    uniforms.uWallWeight = { value: 2.0 }
-
-    // Mouse interaction
-    uniforms.uMouse = { value: new THREE.Vector3() }
-    uniforms.uMouseRayDir = { value: new THREE.Vector3(0, 0, -1) }
-    uniforms.uMouseWeight = { value: 0.0 }
-    uniforms.uInteractionType = { value: 0 } // 0=none, 1=avoid, 2=attract
-
-    // Predator (whale) flee
-    uniforms.uFleeDistance = { value: 30.0 }
-    uniforms.uFleeWeight   = { value: 10.0 }
-    uniforms.uPredatorPos  = { value: new THREE.Vector3(9999, 9999, 9999) }
+  setTargets(targets, worldWidth) {
+    this.targetTexture.image.data.set(targets)
+    this.targetTexture.needsUpdate = true
+    this.velocityVariable.material.uniforms.uWorldWidth.value = worldWidth
   }
 
-  update(delta, elapsed) {
-    if (!this.gpuCompute) return
-
-    // Update uniforms
-    const posUniforms = this.positionVariable.material.uniforms
-    const velUniforms = this.velocityVariable.material.uniforms
-
-    posUniforms.uTime.value = elapsed
-    posUniforms.uDelta.value = delta
-
-    velUniforms.uTime.value = elapsed
-    velUniforms.uDelta.value = delta
-
-    // Compute
+  update(delta, elapsed, release) {
+    for (const variable of [this.positionVariable, this.velocityVariable]) {
+      const uniforms = variable.material.uniforms
+      uniforms.uDelta.value = delta
+      uniforms.uTime.value = elapsed
+      uniforms.uRelease.value = release
+    }
     this.gpuCompute.compute()
   }
 
@@ -180,76 +68,13 @@ export class GPGPUSimulation {
     return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture
   }
 
-  setPredatorPosition(pos) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uPredatorPos.value.copy(pos)
-  }
-
-  setMouseInteraction(position, rayDir, type, weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uMouse.value.copy(position)
-    velUniforms.uMouseRayDir.value.copy(rayDir)
-    velUniforms.uInteractionType.value = type
-    velUniforms.uMouseWeight.value = weight
-  }
-
-  setSpeed(maxSpeed, minSpeed) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uMaxSpeed.value = maxSpeed
-    velUniforms.uMinSpeed.value = minSpeed
-  }
-
-  setSeparationDistance(dist) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uSeparationDistance.value = dist
-  }
-
-  setSeparation(weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uSeparationWeight.value = weight
-  }
-
-  setAlignmentDistance(dist) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uAlignmentDistance.value = dist
-  }
-
-  setAlignment(weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uAlignmentWeight.value = weight
-  }
-
-  setCohesionDistance(dist) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uCohesionDistance.value = dist
-  }
-
-  setCohesion(weight) {
-    const velUniforms = this.velocityVariable.material.uniforms
-    velUniforms.uCohesionWeight.value = weight
-  }
-
   dispose() {
-    if (this.gpuCompute) {
-      // Dispose render targets
-      if (this.positionVariable) {
-        const posRT = this.gpuCompute.getCurrentRenderTarget(this.positionVariable)
-        if (posRT) posRT.dispose()
-      }
-      if (this.velocityVariable) {
-        const velRT = this.gpuCompute.getCurrentRenderTarget(this.velocityVariable)
-        if (velRT) velRT.dispose()
-      }
-
-      // Dispose materials
-      if (this.positionVariable?.material) {
-        this.positionVariable.material.dispose()
-      }
-      if (this.velocityVariable?.material) {
-        this.velocityVariable.material.dispose()
-      }
-
-      this.gpuCompute = null
-    }
+    this.targetTexture?.dispose()
+    // r152 disposes both ping-pong targets and initial textures; variable
+    // shader materials remain owned by this simulation.
+    this.positionVariable?.material.dispose()
+    this.velocityVariable?.material.dispose()
+    this.gpuCompute?.dispose()
+    this.gpuCompute = null
   }
 }

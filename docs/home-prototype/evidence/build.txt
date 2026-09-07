@@ -1,0 +1,26 @@
+
+> yuugou-portfolio@0.0.0 build
+> vite build
+
+vite v7.2.6 building client environment for production...
+transforming...
+✓ 39 modules transformed.
+rendering chunks...
+[plugin vite:reporter] 
+(!) /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/node_modules/three/build/three.module.js is dynamically imported by /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/pages/AR/ARController.js but also statically imported by /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/node_modules/mind-ar/dist/mindar-image-three.prod.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/node_modules/three/examples/jsm/misc/GPUComputationRenderer.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/node_modules/three/examples/jsm/renderers/CSS3DRenderer.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/FishMesh.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/GPGPUSimulation.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/Scene.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/ar/ARFishMesh.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/ar/ARGPGPUSimulation.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/ar/ARScene.js, /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/ar/CardAnimation.js, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/webgl/ar/ARBoids.js is dynamically imported by /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/pages/AR/ARController.js but also statically imported by /Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/src/pages/AR/ARController.js, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                                     4.32 kB │ gzip:   1.88 kB
+dist/assets/index-KloKPhjX.css                      6.79 kB │ gzip:   2.01 kB
+dist/assets/GPUComputationRenderer-OHBv9TeL.js      3.87 kB │ gzip:   1.51 kB
+dist/assets/Scene-Ce9ZTRPu.js                      13.26 kB │ gzip:   4.88 kB
+dist/assets/index-CH-f4Y29.js                   1,970.72 kB │ gzip: 520.91 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.81s
