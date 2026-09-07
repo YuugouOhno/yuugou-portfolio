@@ -111,6 +111,9 @@ export class FishMesh {
       uniforms: {
         uTime: { value: 0.0 },
         uScale: { value: 1.0 },
+        uFormationScale: { value: 1.0 },
+        uFormationOffsetY: { value: 0.0 },
+        uLaneScaleX: { value: 1.0 },
         texturePosition: { value: null },
         textureVelocity: { value: null },
       },
@@ -129,9 +132,10 @@ export class FishMesh {
     this.material.uniforms.uScale.value = scale
   }
 
-  setViewport({ scale, offsetY }) {
-    this.mesh.scale.setScalar(scale)
-    this.mesh.position.y = offsetY
+  setViewport({ scale, offsetY, laneScaleX }) {
+    this.material.uniforms.uFormationScale.value = scale
+    this.material.uniforms.uFormationOffsetY.value = offsetY
+    this.material.uniforms.uLaneScaleX.value = laneScaleX
   }
 
   update(elapsed) {

@@ -1,5 +1,8 @@
 uniform float uTime;
 uniform float uScale;
+uniform float uFormationScale;
+uniform float uFormationOffsetY;
+uniform float uLaneScaleX;
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
 
@@ -46,8 +49,17 @@ void main() {
   float tailFactor = max(0.0, position.z + 0.5); // More movement at tail
   animated.x += sin(phase + aSeed * 6.28) * tailFactor * 0.2;
 
-  // Apply rotation and scale
-  vec3 transformed = rotationMatrix * (animated * aSize * uScale);
+  // Fit the name at z=0; keep swimming lanes at a fixed screen fraction and
+  // fixed depth. Blend by actual depth, not scroll, so an anchor jump cannot
+  // move fish instantly. Resizing never changes GPU positions or velocities.
+  float laneWeight = smoothstep(0.0, 35.0, -pos.z);
+  vec2 viewportScale = mix(vec2(uFormationScale), vec2(uLaneScaleX, 1.0), laneWeight);
+  pos.xy *= viewportScale;
+  pos.y += uFormationOffsetY * (1.0 - laneWeight);
+
+  // Keep each fish's proportions; never scale swimming depth with glyph size.
+  float fishScale = mix(uFormationScale, min(uLaneScaleX, 1.0), laneWeight);
+  vec3 transformed = rotationMatrix * (animated * aSize * uScale * fishScale);
 
   // Apply world position
   transformed += pos;

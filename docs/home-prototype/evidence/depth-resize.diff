@@ -1,0 +1,299 @@
+diff --git a/src/glsl/boids/home-velocity.frag b/src/glsl/boids/home-velocity.frag
+index 29e002a..945fba8 100644
+--- a/src/glsl/boids/home-velocity.frag
++++ b/src/glsl/boids/home-velocity.frag
+@@ -49,7 +49,7 @@ void main() {
+   // surface additionally keeps links/text clear while fish travel into the lanes.
+   float side = mod(index, 2.0) < 1.0 ? -1.0 : 1.0;
+   float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
+-  vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.0 : .51),
++  vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.15 : .6),
+     sin(uTime * .11 + vel.w * 2.1) * 36.0, depth);
+   flock += limit((lane - pos) * .22, 3.0);
+   flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;
+diff --git a/src/glsl/fish/home-fish.vert b/src/glsl/fish/home-fish.vert
+index db9f954..77f450e 100644
+--- a/src/glsl/fish/home-fish.vert
++++ b/src/glsl/fish/home-fish.vert
+@@ -1,5 +1,8 @@
+ uniform float uTime;
+ uniform float uScale;
++uniform float uFormationScale;
++uniform float uFormationOffsetY;
++uniform float uLaneScaleX;
+ uniform sampler2D texturePosition;
+ uniform sampler2D textureVelocity;
+ 
+@@ -46,8 +49,17 @@ void main() {
+   float tailFactor = max(0.0, position.z + 0.5); // More movement at tail
+   animated.x += sin(phase + aSeed * 6.28) * tailFactor * 0.2;
+ 
+-  // Apply rotation and scale
+-  vec3 transformed = rotationMatrix * (animated * aSize * uScale);
++  // Fit the name at z=0; keep swimming lanes at a fixed screen fraction and
++  // fixed depth. Blend by actual depth, not scroll, so an anchor jump cannot
++  // move fish instantly. Resizing never changes GPU positions or velocities.
++  float laneWeight = smoothstep(0.0, 35.0, -pos.z);
++  vec2 viewportScale = mix(vec2(uFormationScale), vec2(uLaneScaleX, 1.0), laneWeight);
++  pos.xy *= viewportScale;
++  pos.y += uFormationOffsetY * (1.0 - laneWeight);
++
++  // Keep each fish's proportions; never scale swimming depth with glyph size.
++  float fishScale = mix(uFormationScale, min(uLaneScaleX, 1.0), laneWeight);
++  vec3 transformed = rotationMatrix * (animated * aSize * uScale * fishScale);
+ 
+   // Apply world position
+   transformed += pos;
+diff --git a/src/webgl/FishMesh.js b/src/webgl/FishMesh.js
+index 4876320..01e40d4 100644
+--- a/src/webgl/FishMesh.js
++++ b/src/webgl/FishMesh.js
+@@ -111,6 +111,9 @@ export class FishMesh {
+       uniforms: {
+         uTime: { value: 0.0 },
+         uScale: { value: 1.0 },
++        uFormationScale: { value: 1.0 },
++        uFormationOffsetY: { value: 0.0 },
++        uLaneScaleX: { value: 1.0 },
+         texturePosition: { value: null },
+         textureVelocity: { value: null },
+       },
+@@ -129,9 +132,10 @@ export class FishMesh {
+     this.material.uniforms.uScale.value = scale
+   }
+ 
+-  setViewport({ scale, offsetY }) {
+-    this.mesh.scale.setScalar(scale)
+-    this.mesh.position.y = offsetY
++  setViewport({ scale, offsetY, laneScaleX }) {
++    this.material.uniforms.uFormationScale.value = scale
++    this.material.uniforms.uFormationOffsetY.value = offsetY
++    this.material.uniforms.uLaneScaleX.value = laneScaleX
+   }
+ 
+   update(elapsed) {
+diff --git a/src/webgl/GPGPUSimulation.js b/src/webgl/GPGPUSimulation.js
+index 970a167..4920267 100644
+--- a/src/webgl/GPGPUSimulation.js
++++ b/src/webgl/GPGPUSimulation.js
+@@ -26,8 +26,10 @@ export class GPGPUSimulation {
+       velocities.image.data[offset + 3] = this.groupIds[i]
+       if (released >= 1) {
+         const side = i % 2 ? 1 : -1
+-        positions.image.data[offset] = side * worldWidth * (.7 + (i % 11) / 30)
+-        positions.image.data[offset + 1] = ((i * .618) % 1 - .5) * 130
++        // Same near/far lanes as the steering shader, inside the view even on
++        // a deep restore. Their simulation coordinates survive every resize.
++        positions.image.data[offset] = side * worldWidth * (i % 5 ? 1.15 : .6)
++        positions.image.data[offset + 1] = ((i * .618) % 1 - .5) * 72
+         positions.image.data[offset + 2] = i % 5 ? -160 : -35
+       }
+     }
+@@ -44,10 +46,6 @@ export class GPGPUSimulation {
+     if (error) throw new Error(error)
+   }
+ 
+-  setWorldWidth(worldWidth) {
+-    this.velocityVariable.material.uniforms.uWorldWidth.value = worldWidth
+-  }
+-
+   update(delta, elapsed, release) {
+     for (const variable of [this.positionVariable, this.velocityVariable]) {
+       const uniforms = variable.material.uniforms
+diff --git a/src/webgl/Scene.js b/src/webgl/Scene.js
+index 90819ba..1c3b16f 100644
+--- a/src/webgl/Scene.js
++++ b/src/webgl/Scene.js
+@@ -87,12 +87,11 @@ export class Scene {
+       // would scatter letters while the fish swim to their new assignments.
+       this.targets = createNameTargets(this.config.boidCount, width, height, this.worldHeight)
+       this.formationWidth = Math.min(this.worldHeight * width / height * .9, 135)
++      this.worldWidth = this.worldHeight * width / height
+       this.fishScale = this.formationWidth / 270
+     }
+-    this.viewportFit = fitNameToViewport(this.formationWidth, width, height, this.worldHeight)
+-    this.worldWidth = this.viewportFit.simulationWidth
++    this.viewportFit = fitNameToViewport(this.formationWidth, width, height, this.worldHeight, this.worldWidth)
+     if (this.gpgpu) {
+-      this.gpgpu.setWorldWidth(this.worldWidth)
+       this.fishMesh.setViewport(this.viewportFit)
+       // Apply projection and presentation together, without a simulation step
+       // or a frame showing the old formation outside the new camera bounds.
+diff --git a/src/webgl/homeLayout.js b/src/webgl/homeLayout.js
+index 568e294..9253e06 100644
+--- a/src/webgl/homeLayout.js
++++ b/src/webgl/homeLayout.js
+@@ -1,11 +1,13 @@
+ // Keep the visit's glyph layout in simulation coordinates. Resize only its
+ // presentation, so even a desktop-to-phone shrink fits on the first frame.
+-export function fitNameToViewport(formationWidth, width, height, worldHeight) {
++export function fitNameToViewport(formationWidth, width, height, worldHeight, initialWorldWidth) {
+   const worldWidth = worldHeight * width / height
+   const scale = Math.min(worldWidth * .9, 135) / formationWidth
+   return {
+     scale,
+     offsetY: worldHeight * .04 * (1 - scale),
+-    simulationWidth: worldWidth / scale,
++    // Released fish use the visit's fixed simulation width, independent of the
++    // capped glyph width. Depth and vertical range stay in camera world units.
++    laneScaleX: worldWidth / initialWorldWidth,
+   }
+ }
+diff --git a/tests/home-browser.mjs b/tests/home-browser.mjs
+index af3fc02..a3b4baa 100644
+--- a/tests/home-browser.mjs
++++ b/tests/home-browser.mjs
+@@ -60,7 +60,7 @@ try {
+     report.screenshots.push(`${name}.png`)
+   }
+   const waitForFish = page => page.waitForSelector('.has-fish .home-ocean canvas')
+-  async function assertFormationFits(page) {
++  async function readProjection(page) {
+     const bounds = await page.evaluate(() => {
+       const scene = [...window.__homeScenes][0]
+       const { renderer, camera, fishMesh, gpgpu } = scene
+@@ -69,16 +69,32 @@ try {
+         0, 0, gpgpu.textureSize, gpgpu.textureSize, positions)
+       fishMesh.mesh.updateMatrixWorld(true)
+       const point = camera.position.clone()
+-      let x = 0, y = 0
++      const uniforms = fishMesh.material.uniforms
++      let x = 0, y = 0, z = 0, minX = Infinity
+       for (let i = 0; i < positions.length; i += 4) {
+-        point.set(positions[i], positions[i + 1], positions[i + 2])
++        // Mirror home-fish.vert's depth-dependent viewport transform before
++        // applying the real Three.js camera. Check xyz, not just screen xy.
++        const t = Math.max(0, Math.min(1, -positions[i + 2] / 35))
++        const laneWeight = t * t * (3 - 2 * t)
++        const scale = uniforms.uFormationScale.value
++        const scaleX = scale + (uniforms.uLaneScaleX.value - scale) * laneWeight
++        const scaleY = scale + (1 - scale) * laneWeight
++        point.set(positions[i] * scaleX,
++          positions[i + 1] * scaleY + uniforms.uFormationOffsetY.value * (1 - laneWeight), positions[i + 2])
+           .applyMatrix4(fishMesh.mesh.matrixWorld).project(camera)
+         x = Math.max(x, Math.abs(point.x))
+         y = Math.max(y, Math.abs(point.y))
++        z = Math.max(z, Math.abs(point.z))
++        minX = Math.min(minX, Math.abs(point.x))
+       }
+-      return { x, y, scenes: window.__homeScenes.size, released: scene.visit.released }
++      return { x, y, z, minX, scenes: window.__homeScenes.size, released: scene.visit.released }
+     })
+     assert.equal(bounds.scenes, 1)
++    assert.ok(bounds.z < 1, `fish clipped in depth: ${JSON.stringify(bounds)}`)
++    return bounds
++  }
++  async function assertFormationFits(page) {
++    const bounds = await readProjection(page)
+     assert.equal(bounds.released, false)
+     assert.ok(bounds.x > .2 && bounds.x < .95, `fish formation clipped horizontally: ${JSON.stringify(bounds)}`)
+     assert.ok(bounds.y > .05 && bounds.y < .85, `fish formation clipped vertically: ${JSON.stringify(bounds)}`)
+@@ -163,6 +179,51 @@ try {
+     report.results.push({ label, options, passed: true, checks: 'formation/GPU bounds before release on shrink and both rotations/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/live scene ownership across route cycles' })
+     await context.close()
+   }
++  // Deep initialization reproduces the review's near/far distribution. Freeze
++  // time (not rendering) so each resize must preserve the same GPU state.
++  for (const [initialWidth, initialHeight] of [[1440, 900], [390, 844], [844, 390], [320, 740]]) {
++    const { context, page } = await contextFor({ viewport: { width: initialWidth, height: initialHeight } })
++    await context.addInitScript(() => {
++      new MutationObserver((_, observer) => {
++        const profile = document.querySelector('#profile')
++        if (profile) {
++          profile.scrollIntoView()
++          observer.disconnect()
++        }
++      }).observe(document, { childList: true, subtree: true })
++    })
++    await page.goto(`${base}/#profile`)
++    await waitForFish(page)
++    await page.evaluate(() => {
++      const scene = [...window.__homeScenes][0]
++      scene.setPaused(true)
++      const gpu = scene.gpgpu
++      const pixels = new Float32Array(scene.config.boidCount * 4)
++      scene.renderer.readRenderTargetPixels(gpu.gpuCompute.getCurrentRenderTarget(gpu.positionVariable),
++        0, 0, gpu.textureSize, gpu.textureSize, pixels)
++      window.__resizeSnapshot = { scene, gpu, targets: scene.targets, pixels: Array.from(pixels) }
++    })
++    for (const [width, height] of [[390, 844], [844, 390], [320, 740], [1440, 900]]) {
++      await page.setViewportSize({ width, height })
++      await page.waitForFunction(({ width, height }) =>
++        Math.abs([...window.__homeScenes][0].camera.aspect - width / height) < .001, { width, height })
++      const bounds = await readProjection(page)
++      assert.equal(bounds.released, true)
++      assert.ok(bounds.minX > .8 && bounds.x < .96 && bounds.y < .7, JSON.stringify(bounds))
++      assert.equal(await page.evaluate(() => {
++        const { scene, gpu, targets, pixels } = window.__resizeSnapshot
++        const current = new Float32Array(pixels.length)
++        scene.renderer.readRenderTargetPixels(gpu.gpuCompute.getCurrentRenderTarget(gpu.positionVariable),
++          0, 0, gpu.textureSize, gpu.textureSize, current)
++        return scene === [...window.__homeScenes][0] && scene.gpgpu === gpu && scene.targets === targets &&
++          current.every((value, i) => value === pixels[i])
++      }), true, 'resize must preserve scene, targets, simulation and positions')
++      const name = `released-${initialWidth}x${initialHeight}-to-${width}x${height}`
++      await capture(page, name)
++      report.results.push({ label: name, passed: true, projection: bounds })
++    }
++    await context.close()
++  }
+   for (const mode of ['reduced-motion', 'webgl-unavailable', 'float-target-unavailable', 'shader-failure', 'context-loss']) {
+     const { context, page } = await contextFor({ viewport: { width: 390, height: 844 }, reducedMotion: mode === 'reduced-motion' ? 'reduce' : 'no-preference' })
+     if (mode === 'webgl-unavailable') await page.addInitScript(() => {
+diff --git a/tests/home-layout.test.js b/tests/home-layout.test.js
+index 3ef29aa..caa17e8 100644
+--- a/tests/home-layout.test.js
++++ b/tests/home-layout.test.js
+@@ -1,5 +1,6 @@
+ import test from 'node:test'
+ import assert from 'node:assert/strict'
++import { PerspectiveCamera, Vector3 } from 'three'
+ import { fitNameToViewport } from '../src/webgl/homeLayout.js'
+ 
+ const worldHeight = 2 * Math.tan(25 * Math.PI / 180) * 100
+@@ -15,17 +16,41 @@ test('an existing formation fits immediately through shrinking and rotation with
+     ]))
+     const original = structuredClone(positions)
+     for (const [width, height] of viewports) {
+-      const fit = fitNameToViewport(formationWidth, width, height, worldHeight)
++      const fit = fitNameToViewport(formationWidth, width, height, worldHeight, worldHeight * initialWidth / initialHeight)
+       for (const [x, y] of positions) {
+         const screenX = x * fit.scale / (worldHeight * width / height) + .5
+         const screenY = .5 - (y * fit.scale + fit.offsetY) / worldHeight
+         assert.ok(screenX >= .05 && screenX <= .95, `horizontal clipping: ${width}×${height}`)
+         assert.ok(screenY >= .1 && screenY <= .8, `vertical clipping: ${width}×${height}`)
+       }
+-      // The lane target is expressed in simulation space, then rendered at the viewport width.
+-      assert.ok(Math.abs(fit.simulationWidth * fit.scale - worldHeight * width / height) < 1e-10)
+     }
+     assert.deepEqual(positions, original)
+-    assert.equal(fitNameToViewport(formationWidth, initialWidth, initialHeight, worldHeight).scale, 1)
++    assert.equal(fitNameToViewport(formationWidth, initialWidth, initialHeight, worldHeight, worldHeight * initialWidth / initialHeight).scale, 1)
++  }
++})
++
++test('released near and far lanes retain xyz projection through every resize, without changing simulation positions', () => {
++  for (const [initialWidth, initialHeight] of viewports) {
++    const initialWorldWidth = worldHeight * initialWidth / initialHeight
++    const formationWidth = Math.min(initialWorldWidth * .9, 135)
++    for (const [width, height] of viewports) {
++      const camera = new PerspectiveCamera(50, width / height, .1, 600)
++      camera.position.z = 100
++      camera.updateMatrixWorld()
++      const fit = fitNameToViewport(formationWidth, width, height, worldHeight, initialWorldWidth)
++      for (const z of [-35, -160]) {
++        for (const side of [-1, 1]) {
++          for (const y of [-36, 0, 36]) {
++            const x = side * initialWorldWidth * (z === -35 ? .6 : 1.15)
++            // At lane depth the shader uses this presentation, never a z scale.
++            const projected = new Vector3(x * fit.laneScaleX, y, z).project(camera)
++            assert.ok(Math.abs(projected.x) > .85 && Math.abs(projected.x) < .91,
++              `side lane lost after ${initialWidth}x${initialHeight} -> ${width}x${height}: ${projected.x}`)
++            assert.ok(Math.abs(projected.y) < .6)
++            assert.ok(projected.z > -1 && projected.z < 1, `depth clipped: ${projected.z}`)
++          }
++        }
++      }
++    }
+   }
+ })

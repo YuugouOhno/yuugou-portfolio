@@ -49,7 +49,7 @@ void main() {
   // surface additionally keeps links/text clear while fish travel into the lanes.
   float side = mod(index, 2.0) < 1.0 ? -1.0 : 1.0;
   float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
-  vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.0 : .51),
+  vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.15 : .6),
     sin(uTime * .11 + vel.w * 2.1) * 36.0, depth);
   flock += limit((lane - pos) * .22, 3.0);
   flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;

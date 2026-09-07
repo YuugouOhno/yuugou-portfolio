@@ -2,48 +2,54 @@ TAP version 13
 # Subtest: an existing formation fits immediately through shrinking and rotation without moving fish
 ok 1 - an existing formation fits immediately through shrinking and rotation without moving fish
   ---
-  duration_ms: 1.526333
+  duration_ms: 0.986958
+  type: 'test'
+  ...
+# Subtest: released near and far lanes retain xyz projection through every resize, without changing simulation positions
+ok 2 - released near and far lanes retain xyz projection through every resize, without changing simulation positions
+  ---
+  duration_ms: 0.713292
   type: 'test'
   ...
 # Subtest: formation loosens with actual hero progress and can reverse before release
-ok 2 - formation loosens with actual hero progress and can reverse before release
+ok 3 - formation loosens with actual hero progress and can reverse before release
   ---
-  duration_ms: 1.532625
+  duration_ms: 1.295875
   type: 'test'
   ...
 # Subtest: release is latched for this visit, including deep restoration and resize
-ok 3 - release is latched for this visit, including deep restoration and resize
+ok 4 - release is latched for this visit, including deep restoration and resize
   ---
-  duration_ms: 0.090417
+  duration_ms: 0.083375
   type: 'test'
   ...
 # Subtest: large scroll jumps and background-tab time cannot jump the release blend
-ok 4 - large scroll jumps and background-tab time cannot jump the release blend
+ok 5 - large scroll jumps and background-tab time cannot jump the release blend
   ---
-  duration_ms: 0.101875
+  duration_ms: 0.096
   type: 'test'
   ...
 # Subtest: responsive lines preserve the exact name and case
-ok 5 - responsive lines preserve the exact name and case
+ok 6 - responsive lines preserve the exact name and case
   ---
-  duration_ms: 0.077709
+  duration_ms: 0.072792
   type: 'test'
   ...
 # Subtest: overscroll is clamped and release is continuous at the configurable boundaries
-ok 6 - overscroll is clamped and release is continuous at the configurable boundaries
+ok 7 - overscroll is clamped and release is continuous at the configurable boundaries
   ---
-  duration_ms: 0.213834
+  duration_ms: 0.208916
   type: 'test'
   ...
-1..6
-# tests 6
+1..7
+# tests 7
 # suites 0
-# pass 6
+# pass 7
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 55.776042
+# duration_ms 61.828084
 # start of coverage report
 # ----------------------------------------------------------------------
 # file                  | line % | branch % | funcs % | uncovered lines

@@ -60,7 +60,7 @@ try {
     report.screenshots.push(`${name}.png`)
   }
   const waitForFish = page => page.waitForSelector('.has-fish .home-ocean canvas')
-  async function assertFormationFits(page) {
+  async function readProjection(page) {
     const bounds = await page.evaluate(() => {
       const scene = [...window.__homeScenes][0]
       const { renderer, camera, fishMesh, gpgpu } = scene
@@ -69,16 +69,32 @@ try {
         0, 0, gpgpu.textureSize, gpgpu.textureSize, positions)
       fishMesh.mesh.updateMatrixWorld(true)
       const point = camera.position.clone()
-      let x = 0, y = 0
+      const uniforms = fishMesh.material.uniforms
+      let x = 0, y = 0, z = 0, minX = Infinity
       for (let i = 0; i < positions.length; i += 4) {
-        point.set(positions[i], positions[i + 1], positions[i + 2])
+        // Mirror home-fish.vert's depth-dependent viewport transform before
+        // applying the real Three.js camera. Check xyz, not just screen xy.
+        const t = Math.max(0, Math.min(1, -positions[i + 2] / 35))
+        const laneWeight = t * t * (3 - 2 * t)
+        const scale = uniforms.uFormationScale.value
+        const scaleX = scale + (uniforms.uLaneScaleX.value - scale) * laneWeight
+        const scaleY = scale + (1 - scale) * laneWeight
+        point.set(positions[i] * scaleX,
+          positions[i + 1] * scaleY + uniforms.uFormationOffsetY.value * (1 - laneWeight), positions[i + 2])
           .applyMatrix4(fishMesh.mesh.matrixWorld).project(camera)
         x = Math.max(x, Math.abs(point.x))
         y = Math.max(y, Math.abs(point.y))
+        z = Math.max(z, Math.abs(point.z))
+        minX = Math.min(minX, Math.abs(point.x))
       }
-      return { x, y, scenes: window.__homeScenes.size, released: scene.visit.released }
+      return { x, y, z, minX, scenes: window.__homeScenes.size, released: scene.visit.released }
     })
     assert.equal(bounds.scenes, 1)
+    assert.ok(bounds.z < 1, `fish clipped in depth: ${JSON.stringify(bounds)}`)
+    return bounds
+  }
+  async function assertFormationFits(page) {
+    const bounds = await readProjection(page)
     assert.equal(bounds.released, false)
     assert.ok(bounds.x > .2 && bounds.x < .95, `fish formation clipped horizontally: ${JSON.stringify(bounds)}`)
     assert.ok(bounds.y > .05 && bounds.y < .85, `fish formation clipped vertically: ${JSON.stringify(bounds)}`)
@@ -161,6 +177,51 @@ try {
     await page.keyboard.press('PageDown')
     await page.waitForFunction(() => scrollY > 100)
     report.results.push({ label, options, passed: true, checks: 'formation/GPU bounds before release on shrink and both rotations/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/live scene ownership across route cycles' })
+    await context.close()
+  }
+  // Deep initialization reproduces the review's near/far distribution. Freeze
+  // time (not rendering) so each resize must preserve the same GPU state.
+  for (const [initialWidth, initialHeight] of [[1440, 900], [390, 844], [844, 390], [320, 740]]) {
+    const { context, page } = await contextFor({ viewport: { width: initialWidth, height: initialHeight } })
+    await context.addInitScript(() => {
+      new MutationObserver((_, observer) => {
+        const profile = document.querySelector('#profile')
+        if (profile) {
+          profile.scrollIntoView()
+          observer.disconnect()
+        }
+      }).observe(document, { childList: true, subtree: true })
+    })
+    await page.goto(`${base}/#profile`)
+    await waitForFish(page)
+    await page.evaluate(() => {
+      const scene = [...window.__homeScenes][0]
+      scene.setPaused(true)
+      const gpu = scene.gpgpu
+      const pixels = new Float32Array(scene.config.boidCount * 4)
+      scene.renderer.readRenderTargetPixels(gpu.gpuCompute.getCurrentRenderTarget(gpu.positionVariable),
+        0, 0, gpu.textureSize, gpu.textureSize, pixels)
+      window.__resizeSnapshot = { scene, gpu, targets: scene.targets, pixels: Array.from(pixels) }
+    })
+    for (const [width, height] of [[390, 844], [844, 390], [320, 740], [1440, 900]]) {
+      await page.setViewportSize({ width, height })
+      await page.waitForFunction(({ width, height }) =>
+        Math.abs([...window.__homeScenes][0].camera.aspect - width / height) < .001, { width, height })
+      const bounds = await readProjection(page)
+      assert.equal(bounds.released, true)
+      assert.ok(bounds.minX > .8 && bounds.x < .96 && bounds.y < .7, JSON.stringify(bounds))
+      assert.equal(await page.evaluate(() => {
+        const { scene, gpu, targets, pixels } = window.__resizeSnapshot
+        const current = new Float32Array(pixels.length)
+        scene.renderer.readRenderTargetPixels(gpu.gpuCompute.getCurrentRenderTarget(gpu.positionVariable),
+          0, 0, gpu.textureSize, gpu.textureSize, current)
+        return scene === [...window.__homeScenes][0] && scene.gpgpu === gpu && scene.targets === targets &&
+          current.every((value, i) => value === pixels[i])
+      }), true, 'resize must preserve scene, targets, simulation and positions')
+      const name = `released-${initialWidth}x${initialHeight}-to-${width}x${height}`
+      await capture(page, name)
+      report.results.push({ label: name, passed: true, projection: bounds })
+    }
     await context.close()
   }
   for (const mode of ['reduced-motion', 'webgl-unavailable', 'float-target-unavailable', 'shader-failure', 'context-loss']) {

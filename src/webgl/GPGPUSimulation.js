@@ -26,8 +26,10 @@ export class GPGPUSimulation {
       velocities.image.data[offset + 3] = this.groupIds[i]
       if (released >= 1) {
         const side = i % 2 ? 1 : -1
-        positions.image.data[offset] = side * worldWidth * (.7 + (i % 11) / 30)
-        positions.image.data[offset + 1] = ((i * .618) % 1 - .5) * 130
+        // Same near/far lanes as the steering shader, inside the view even on
+        // a deep restore. Their simulation coordinates survive every resize.
+        positions.image.data[offset] = side * worldWidth * (i % 5 ? 1.15 : .6)
+        positions.image.data[offset + 1] = ((i * .618) % 1 - .5) * 72
         positions.image.data[offset + 2] = i % 5 ? -160 : -35
       }
     }
@@ -42,10 +44,6 @@ export class GPGPUSimulation {
     }
     const error = this.gpuCompute.init()
     if (error) throw new Error(error)
-  }
-
-  setWorldWidth(worldWidth) {
-    this.velocityVariable.material.uniforms.uWorldWidth.value = worldWidth
   }
 
   update(delta, elapsed, release) {

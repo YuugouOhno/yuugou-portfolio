@@ -87,12 +87,11 @@ export class Scene {
       // would scatter letters while the fish swim to their new assignments.
       this.targets = createNameTargets(this.config.boidCount, width, height, this.worldHeight)
       this.formationWidth = Math.min(this.worldHeight * width / height * .9, 135)
+      this.worldWidth = this.worldHeight * width / height
       this.fishScale = this.formationWidth / 270
     }
-    this.viewportFit = fitNameToViewport(this.formationWidth, width, height, this.worldHeight)
-    this.worldWidth = this.viewportFit.simulationWidth
+    this.viewportFit = fitNameToViewport(this.formationWidth, width, height, this.worldHeight, this.worldWidth)
     if (this.gpgpu) {
-      this.gpgpu.setWorldWidth(this.worldWidth)
       this.fishMesh.setViewport(this.viewportFit)
       // Apply projection and presentation together, without a simulation step
       // or a frame showing the old formation outside the new camera bounds.
