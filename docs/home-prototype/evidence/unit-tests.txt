@@ -3,42 +3,48 @@
 > node --test tests/*.test.js
 
 TAP version 13
-# Subtest: formation loosens with actual hero progress and can reverse before release
-ok 1 - formation loosens with actual hero progress and can reverse before release
+# Subtest: an existing formation fits immediately through shrinking and rotation without moving fish
+ok 1 - an existing formation fits immediately through shrinking and rotation without moving fish
   ---
-  duration_ms: 0.671375
+  duration_ms: 0.975417
+  type: 'test'
+  ...
+# Subtest: formation loosens with actual hero progress and can reverse before release
+ok 2 - formation loosens with actual hero progress and can reverse before release
+  ---
+  duration_ms: 0.720459
   type: 'test'
   ...
 # Subtest: release is latched for this visit, including deep restoration and resize
-ok 2 - release is latched for this visit, including deep restoration and resize
+ok 3 - release is latched for this visit, including deep restoration and resize
   ---
-  duration_ms: 0.063333
+  duration_ms: 0.068917
   type: 'test'
   ...
 # Subtest: large scroll jumps and background-tab time cannot jump the release blend
-ok 3 - large scroll jumps and background-tab time cannot jump the release blend
+ok 4 - large scroll jumps and background-tab time cannot jump the release blend
   ---
-  duration_ms: 0.132459
+  duration_ms: 0.131792
   type: 'test'
   ...
 # Subtest: responsive lines preserve the exact name and case
-ok 4 - responsive lines preserve the exact name and case
+ok 5 - responsive lines preserve the exact name and case
   ---
-  duration_ms: 0.069167
+  duration_ms: 0.299709
   type: 'test'
   ...
 # Subtest: overscroll is clamped and release is continuous at the configurable boundaries
-ok 5 - overscroll is clamped and release is continuous at the configurable boundaries
+ok 6 - overscroll is clamped and release is continuous at the configurable boundaries
   ---
-  duration_ms: 0.232375
+  duration_ms: 0.505667
   type: 'test'
   ...
-1..5
-# tests 5
+1..6
+# tests 6
 # suites 0
-# pass 5
+# pass 6
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 41.056333
+# duration_ms 46.768583

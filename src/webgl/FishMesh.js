@@ -129,6 +129,11 @@ export class FishMesh {
     this.material.uniforms.uScale.value = scale
   }
 
+  setViewport({ scale, offsetY }) {
+    this.mesh.scale.setScalar(scale)
+    this.mesh.position.y = offsetY
+  }
+
   update(elapsed) {
     if (!this.material || !this.gpgpu) return
 

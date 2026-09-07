@@ -1,0 +1,15 @@
+2026-09-07 / macOS Darwin / Node v22.21.1
+Command: npm run dev -- --host 127.0.0.1
+Exit code: 1
+
+> yuugou-portfolio@0.0.0 dev
+> vite --host 127.0.0.1
+
+error when starting dev server:
+Error: listen EPERM: operation not permitted 127.0.0.1:5173
+    at Server.setupListenHandle [as _listen2] (node:net:1918:21)
+    at listenInCluster (node:net:1997:12)
+    at node:net:2206:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+
+Copied from the actual tool output. No server or page was available from this attempt.

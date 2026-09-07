@@ -3,6 +3,7 @@ import { GPGPUSimulation } from './GPGPUSimulation.js'
 import { FishMesh } from './FishMesh.js'
 import { advanceRelease, easeRelease } from './homeMotion.js'
 import { createNameTargets } from './nameTargets.js'
+import { fitNameToViewport } from './homeLayout.js'
 
 // Home owns this scene; AR has its own scene, mesh and simulation.
 export class Scene {
@@ -48,10 +49,18 @@ export class Scene {
     this.gpgpu.update(0, 0, this.blend)
     this.fishMesh.setGPGPU(this.gpgpu)
     this.fishMesh.setScale(this.fishScale)
+    this.fishMesh.setViewport(this.viewportFit)
     this.scene.add(this.fishMesh.mesh)
     this.fishMesh.update(0)
     this.renderer.render(this.scene, this.camera)
-    this.resizeObserver = new ResizeObserver(() => this.resize())
+    this.resizeObserver = new ResizeObserver(() => {
+      try {
+        this.resize()
+      } catch (error) {
+        console.warn('Home fish resize failed; HTML remains available.', error)
+        this.onFailure()
+      }
+    })
     this.resizeObserver.observe(this.container)
     document.addEventListener('visibilitychange', this.onVisibility)
     this.frame = requestAnimationFrame(this.animate)
@@ -73,14 +82,21 @@ export class Scene {
     this.renderer.setSize(width, height)
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
-    this.worldWidth = this.worldHeight * width / height
-    this.targets = createNameTargets(this.config.boidCount, width, height, this.worldHeight)
-    this.fishScale = Math.min(this.worldWidth * .9, 135) / 270
+    if (!this.targets) {
+      // Wrapping is chosen once per visit. Reflowing target indices on resize
+      // would scatter letters while the fish swim to their new assignments.
+      this.targets = createNameTargets(this.config.boidCount, width, height, this.worldHeight)
+      this.formationWidth = Math.min(this.worldHeight * width / height * .9, 135)
+      this.fishScale = this.formationWidth / 270
+    }
+    this.viewportFit = fitNameToViewport(this.formationWidth, width, height, this.worldHeight)
+    this.worldWidth = this.viewportFit.simulationWidth
     if (this.gpgpu) {
-      // Update attraction only. Never replace current fish positions during resizing.
-      this.gpgpu.setTargets(this.targets, this.worldWidth)
-      this.fishMesh.setScale(this.fishScale)
-      if (this.paused) this.renderer.render(this.scene, this.camera)
+      this.gpgpu.setWorldWidth(this.worldWidth)
+      this.fishMesh.setViewport(this.viewportFit)
+      // Apply projection and presentation together, without a simulation step
+      // or a frame showing the old formation outside the new camera bounds.
+      this.renderer.render(this.scene, this.camera)
     }
   }
 

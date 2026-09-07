@@ -44,9 +44,7 @@ export class GPGPUSimulation {
     if (error) throw new Error(error)
   }
 
-  setTargets(targets, worldWidth) {
-    this.targetTexture.image.data.set(targets)
-    this.targetTexture.needsUpdate = true
+  setWorldWidth(worldWidth) {
     this.velocityVariable.material.uniforms.uWorldWidth.value = worldWidth
   }
 
