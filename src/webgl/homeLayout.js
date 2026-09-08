@@ -9,5 +9,8 @@ export function fitNameToViewport(formationWidth, width, height, worldHeight, in
     // Released fish use the visit's fixed simulation width, independent of the
     // capped glyph width. Depth and vertical range stay in camera world units.
     laneScaleX: worldWidth / initialWorldWidth,
+    // At z=-35 the smallest broadside fish is ~3 CSS pixels long; distant
+    // fish remain ~1.6px. Letter sizing must not make phone body fish subpixel.
+    laneFishScale: worldHeight / height * 3.4,
   }
 }

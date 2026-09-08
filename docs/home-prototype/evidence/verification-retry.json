@@ -1,0 +1,30 @@
+{
+  "date": "2026-09-08T04:25:36.309218+00:00",
+  "sourceCommit": "3f39162715a6e11ec5a39835d5017d54bd072314",
+  "checks": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "outputFile": "unit-tests.txt",
+      "output": null
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "outputFile": "build.txt",
+      "output": null
+    },
+    {
+      "command": "node --check tests/home-browser.mjs",
+      "exitCode": 0,
+      "outputFile": null,
+      "output": ""
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 2,
+      "outputFile": null,
+      "output": "docs/home-prototype/evidence/build.txt:9: trailing whitespace.\n+[plugin vite:reporter] \ndocs/home-prototype/evidence/build.txt:12: trailing whitespace.\n+[plugin vite:reporter] \n"
+    }
+  ]
+}

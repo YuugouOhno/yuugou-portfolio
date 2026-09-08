@@ -6,6 +6,21 @@ import { fitNameToViewport } from '../src/webgl/homeLayout.js'
 const worldHeight = 2 * Math.tan(25 * Math.PI / 180) * 100
 const viewports = [[1440, 900], [390, 844], [844, 390], [320, 740]]
 
+test('body fish retain a discernible projected size regardless of the initial name width', () => {
+  for (const [initialWidth, initialHeight] of viewports) {
+    const initialWorldWidth = worldHeight * initialWidth / initialHeight
+    for (const [width, height] of viewports) {
+      const fit = fitNameToViewport(Math.min(initialWorldWidth * .9, 135), width, height, worldHeight, initialWorldWidth)
+      // Smallest 1.5-unit cone, viewed broadside. Actual orientation/occlusion
+      // additionally need rendered-pixel checks and screenshot inspection.
+      const nearPixels = 1.5 * .8 * fit.laneFishScale * height / (worldHeight * 1.35)
+      const farPixels = nearPixels * 1.35 / 2.6
+      assert.ok(nearPixels >= 3 && nearPixels <= 4, `near fish too small/large: ${nearPixels}`)
+      assert.ok(farPixels >= 1.5 && farPixels <= 2.1, `far fish too small/large: ${farPixels}`)
+    }
+  }
+})
+
 test('an existing formation fits immediately through shrinking and rotation without moving fish', () => {
   for (const [initialWidth, initialHeight] of viewports) {
     const formationWidth = Math.min(worldHeight * initialWidth / initialHeight * .9, 135)

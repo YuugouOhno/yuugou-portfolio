@@ -51,6 +51,11 @@ void main() {
   float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
   vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.15 : .6),
     sin(uTime * .11 + vel.w * 2.1) * 36.0, depth);
+  // Reach the exposed margins before receding: a direct diagonal toward the
+  // distant lane otherwise spends many seconds hidden under mobile copy.
+  // Use current projected position so this remains continuous and resize-safe.
+  float screenSide = abs(pos.x) / (uWorldWidth * (1.0 - pos.z / 100.0));
+  lane.z = mix(pos.z, depth, smoothstep(.28, .42, screenSide));
   flock += limit((lane - pos) * .22, 3.0);
   flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;
   flock -= vel.xyz * .24;

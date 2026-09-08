@@ -3,6 +3,7 @@ uniform float uScale;
 uniform float uFormationScale;
 uniform float uFormationOffsetY;
 uniform float uLaneScaleX;
+uniform float uLaneFishScale;
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
 
@@ -35,7 +36,7 @@ void main() {
   float phase = posData.w;
 
   // Pass to fragment shader
-  vColor = aColor;
+  vColor = aColor * 1.35;
   vNormal = normal;
   vVelocity = vel;
   vPhase = phase;
@@ -58,8 +59,8 @@ void main() {
   pos.y += uFormationOffsetY * (1.0 - laneWeight);
 
   // Keep each fish's proportions; never scale swimming depth with glyph size.
-  float fishScale = mix(uFormationScale, min(uLaneScaleX, 1.0), laneWeight);
-  vec3 transformed = rotationMatrix * (animated * aSize * uScale * fishScale);
+  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, laneWeight);
+  vec3 transformed = rotationMatrix * (animated * aSize * fishScale);
 
   // Apply world position
   transformed += pos;

@@ -1,0 +1,35 @@
+{
+  "ready": {
+    "iteration": 1,
+    "candidatePath": "/private/tmp/yuugou-task1-review/candidate-1",
+    "summary": "Body fish sizes now independent of glyph width (~3px near / 1.6px far), side-first continuous steering before depth, Home-only brightness +35%. New rendered triangle visibility check excluding opaque copy/header/footer at body and +30s; 8 unit tests and build passed. Please run full browser suite and inspect initial phone lettering, immediate body +30s, gradual scroll for lateral motion/clipping. Include gradual sequence/video and environment/exact lockfile validation. Source manifest included."
+  },
+  "result": {
+    "status": "awaiting-manager-result; current candidate browser verification not completed",
+    "iteration": 1,
+    "candidatePath": "/private/tmp/yuugou-task1-review/candidate-1",
+    "readyPath": "/private/tmp/yuugou-task1-review/ready.json",
+    "expectedResultPath": "/private/tmp/yuugou-task1-review/result-1.json",
+    "checkedAt": "2026-09-08T14:06:05.654365+09:00",
+    "waitedSeconds": 1284,
+    "plannedViewports": [
+      {
+        "label": "desktop",
+        "width": 1440,
+        "height": 900,
+        "dpr": 1
+      },
+      {
+        "label": "mobile-emulated",
+        "width": 390,
+        "height": 844,
+        "dpr": 3,
+        "touch": true
+      }
+    ],
+    "results": [],
+    "screenshots": [],
+    "physicalDevicesVerified": false,
+    "note": "No browser/server launch attempted by this worker. User-requested manager handoff published, polled every approximately 30 seconds for over 20 minutes, no result received. Prior manager screenshots are before-change comparison only."
+  }
+}

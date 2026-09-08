@@ -60,6 +60,38 @@ try {
     report.screenshots.push(`${name}.png`)
   }
   const waitForFish = page => page.waitForSelector('.has-fish .home-ocean canvas')
+  async function assertBodyFishVisible(page, label) {
+    const rendered = await page.evaluate(() => {
+      const scene = [...window.__homeScenes][0]
+      scene.renderer.render(scene.scene, scene.camera)
+      // Read the actual rendered triangles, not simulation centers. Copy in
+      // the same task before WebGL discards the default drawing buffer.
+      const canvas = scene.renderer.domElement
+      const copy = document.createElement('canvas')
+      copy.width = canvas.width
+      copy.height = canvas.height
+      const ctx = copy.getContext('2d', { willReadFrequently: true })
+      ctx.drawImage(canvas, 0, 0)
+      const { data } = ctx.getImageData(0, 0, copy.width, copy.height)
+      const ratioX = copy.width / innerWidth
+      const ratioY = copy.height / innerHeight
+      const masks = [...document.querySelectorAll('.home-copy, .home-footer, .home-header')]
+        .map(el => el.getBoundingClientRect())
+      let visiblePixels = 0
+      for (let y = 0; y < copy.height; y++) {
+        for (let x = 0; x < copy.width; x++) {
+          const offset = (y * copy.width + x) * 4
+          if (data[offset + 3] < 128 || Math.max(data[offset], data[offset + 1], data[offset + 2]) < 55) continue
+          const cssX = x / ratioX, cssY = y / ratioY
+          if (masks.some(rect => cssX >= rect.left && cssX <= rect.right && cssY >= rect.top && cssY <= rect.bottom)) continue
+          visiblePixels++
+        }
+      }
+      return { visibleCssPixels: visiblePixels / (ratioX * ratioY), simulationSeconds: scene.elapsed }
+    })
+    report.results.push({ label, rendered })
+    assert.ok(rendered.visibleCssPixels >= 20, `${label}: body fish not visibly rendered outside opaque copy: ${JSON.stringify(rendered)}`)
+  }
   async function readProjection(page) {
     const bounds = await page.evaluate(() => {
       const scene = [...window.__homeScenes][0]
@@ -139,6 +171,10 @@ try {
     await page.waitForFunction(() => document.querySelector('.home-ocean').dataset.blend === '1.000')
     await page.waitForTimeout(1500)
     await capture(page, `${label}-body`)
+    await assertBodyFishVisible(page, `${label}-body-visible-pixels`)
+    await page.waitForTimeout(30000)
+    await capture(page, `${label}-body-after-30s`)
+    await assertBodyFishVisible(page, `${label}-body-after-30s-visible-pixels`)
     await page.evaluate(() => scrollTo(0, 0))
     await page.waitForTimeout(100)
     assert.equal(await page.locator('.home-ocean').getAttribute('data-release'), 'released')
