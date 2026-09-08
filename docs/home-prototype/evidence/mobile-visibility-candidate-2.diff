@@ -1,0 +1,81 @@
+diff --git a/src/glsl/boids/home-velocity.frag b/src/glsl/boids/home-velocity.frag
+index 10566b5..2282dbe 100644
+--- a/src/glsl/boids/home-velocity.frag
++++ b/src/glsl/boids/home-velocity.frag
+@@ -47,15 +47,21 @@ void main() {
+   }
+   // Swim in side lanes, with 80% of the fish farther away. The opaque reading
+   // surface additionally keeps links/text clear while fish travel into the lanes.
+-  float side = mod(index, 2.0) < 1.0 ? -1.0 : 1.0;
++  // Leave through the closest margin instead of sending half the name across
++  // the opaque copy. The assignment stays fixed for the whole visit.
++  float side = target.x < 0.0 ? -1.0 : 1.0;
+   float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
+-  vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.15 : .6),
+-    sin(uTime * .11 + vel.w * 2.1) * 36.0, depth);
++  // Follow a perspective-correct corridor at the CURRENT depth. A far-away
++  // lane's final x coordinate points offscreen while the fish is still near.
++  float laneX = side * uWorldWidth * .455 * (1.0 - pos.z / 100.0);
+   // Reach the exposed margins before receding: a direct diagonal toward the
+   // distant lane otherwise spends many seconds hidden under mobile copy.
+   // Use current projected position so this remains continuous and resize-safe.
+   float screenSide = abs(pos.x) / (uWorldWidth * (1.0 - pos.z / 100.0));
+-  lane.z = mix(pos.z, depth, smoothstep(.28, .42, screenSide));
++  float inMargin = smoothstep(.28, .42, screenSide);
++  vec3 lane = vec3(laneX,
++    mix(pos.y, sin(uTime * .11 + vel.w * 2.1) * 36.0, inMargin),
++    mix(pos.z, depth, inMargin));
+   flock += limit((lane - pos) * .22, 3.0);
+   flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;
+   flock -= vel.xyz * .24;
+diff --git a/src/glsl/fish/home-fish.vert b/src/glsl/fish/home-fish.vert
+index 05a24fd..407a631 100644
+--- a/src/glsl/fish/home-fish.vert
++++ b/src/glsl/fish/home-fish.vert
+@@ -6,6 +6,7 @@ uniform float uLaneScaleX;
+ uniform float uLaneFishScale;
+ uniform sampler2D texturePosition;
+ uniform sampler2D textureVelocity;
++uniform sampler2D uTargets;
+
+ attribute vec2 aReference;
+ attribute vec3 aColor;
+@@ -32,6 +33,9 @@ void main() {
+   vec4 velData = texture2D(textureVelocity, aReference);
+
+   vec3 pos = posData.xyz;
++  // Size follows physical departure from the glyph, including lateral travel.
++  // Waiting for z=-35 left moving phone fish almost subpixel in the margins.
++  float departure = smoothstep(0.0, 6.0, distance(pos, texture2D(uTargets, aReference).xyz));
+   vec3 vel = velData.xyz;
+   float phase = posData.w;
+
+@@ -59,7 +63,7 @@ void main() {
+   pos.y += uFormationOffsetY * (1.0 - laneWeight);
+
+   // Keep each fish's proportions; never scale swimming depth with glyph size.
+-  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, laneWeight);
++  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, departure);
+   vec3 transformed = rotationMatrix * (animated * aSize * fishScale);
+
+   // Apply world position
+diff --git a/src/webgl/FishMesh.js b/src/webgl/FishMesh.js
+index cb1aee3..2aa7a93 100644
+--- a/src/webgl/FishMesh.js
++++ b/src/webgl/FishMesh.js
+@@ -117,6 +117,7 @@ export class FishMesh {
+         uLaneFishScale: { value: 1.0 },
+         texturePosition: { value: null },
+         textureVelocity: { value: null },
++        uTargets: { value: null },
+       },
+       side: THREE.DoubleSide,
+     })
+@@ -146,6 +147,7 @@ export class FishMesh {
+     this.material.uniforms.uTime.value = elapsed
+     this.material.uniforms.texturePosition.value = this.gpgpu.getPositionTexture()
+     this.material.uniforms.textureVelocity.value = this.gpgpu.getVelocityTexture()
++    this.material.uniforms.uTargets.value = this.gpgpu.targetTexture
+   }
+
+   dispose() {

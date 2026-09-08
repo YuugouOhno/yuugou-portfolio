@@ -117,6 +117,7 @@ export class FishMesh {
         uLaneFishScale: { value: 1.0 },
         texturePosition: { value: null },
         textureVelocity: { value: null },
+        uTargets: { value: null },
       },
       side: THREE.DoubleSide,
     })
@@ -146,6 +147,7 @@ export class FishMesh {
     this.material.uniforms.uTime.value = elapsed
     this.material.uniforms.texturePosition.value = this.gpgpu.getPositionTexture()
     this.material.uniforms.textureVelocity.value = this.gpgpu.getVelocityTexture()
+    this.material.uniforms.uTargets.value = this.gpgpu.targetTexture
   }
 
   dispose() {

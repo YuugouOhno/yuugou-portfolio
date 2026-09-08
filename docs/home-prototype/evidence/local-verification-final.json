@@ -1,7 +1,6 @@
 {
-  "checkedAt": "2026-09-08T05:11:07.373066+00:00",
-  "execution": "worker sandbox",
-  "node": "v22.21.1",
+  "candidate": 3,
+  "executedAt": "2026-09-08T06:18:38.098566+00:00",
   "results": [
     {
       "command": "npm test",
@@ -16,13 +15,15 @@
     {
       "command": "node --check tests/home-browser.mjs",
       "exitCode": 0,
-      "output": ""
+      "log": "browser-syntax-final.txt"
     },
     {
       "command": "git diff --check",
       "exitCode": 0,
-      "output": ""
+      "log": "diff-check-final.txt"
     }
   ],
-  "logFormatting": "Trailing whitespace removed from nonempty text logs."
+  "notes": [
+    "First diff-check detected a whitespace-only context line inside generated prototype.diff; normalized evidence line endings and reran successfully. Application source unchanged."
+  ]
 }

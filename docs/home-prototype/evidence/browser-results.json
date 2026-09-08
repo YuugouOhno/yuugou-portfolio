@@ -1,11 +1,11 @@
 {
   "status": "awaiting-manager-result; current candidate browser verification not completed",
-  "iteration": 1,
-  "candidatePath": "/private/tmp/yuugou-task1-review/candidate-1",
+  "iteration": 3,
+  "candidatePath": "/private/tmp/yuugou-task1-review/candidate-3",
   "readyPath": "/private/tmp/yuugou-task1-review/ready.json",
-  "expectedResultPath": "/private/tmp/yuugou-task1-review/result-1.json",
-  "checkedAt": "2026-09-08T14:06:05.654365+09:00",
-  "waitedSeconds": 1284,
+  "expectedResultPath": "/private/tmp/yuugou-task1-review/result-3.json",
+  "checkedAt": "2026-09-08T06:46:34.537478+00:00",
+  "waitedSeconds": 1703,
   "plannedViewports": [
     {
       "label": "desktop",
@@ -24,5 +24,5 @@
   "results": [],
   "screenshots": [],
   "physicalDevicesVerified": false,
-  "note": "No browser/server launch attempted by this worker. User-requested manager handoff published, polled every approximately 30 seconds for over 20 minutes, no result received. Prior manager screenshots are before-change comparison only."
+  "note": "Candidate-1 actual result received: mobile body rendering failed. Candidate-2 full browser suite passed, but independent visual review required more meaningful immediate mobile body fish. Candidate-3 application/test sources are immutable and await manager execution/result/motion evidence. No candidate-2 success is transferred to candidate-3. Worker has not launched browser/server or changed sandbox permissions."
 }

@@ -6,6 +6,7 @@ uniform float uLaneScaleX;
 uniform float uLaneFishScale;
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
+uniform sampler2D uTargets;
 
 attribute vec2 aReference;
 attribute vec3 aColor;
@@ -32,6 +33,9 @@ void main() {
   vec4 velData = texture2D(textureVelocity, aReference);
 
   vec3 pos = posData.xyz;
+  // Size follows physical departure from the glyph, including lateral travel.
+  // Waiting for z=-35 left moving phone fish almost subpixel in the margins.
+  float departure = smoothstep(0.0, 6.0, distance(pos, texture2D(uTargets, aReference).xyz));
   vec3 vel = velData.xyz;
   float phase = posData.w;
 
@@ -59,7 +63,7 @@ void main() {
   pos.y += uFormationOffsetY * (1.0 - laneWeight);
 
   // Keep each fish's proportions; never scale swimming depth with glyph size.
-  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, laneWeight);
+  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, departure);
   vec3 transformed = rotationMatrix * (animated * aSize * fishScale);
 
   // Apply world position

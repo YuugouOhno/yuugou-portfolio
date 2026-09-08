@@ -1,0 +1,350 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "node": "v26.0.0",
+    "date": "2026-09-08T06:14:28.489Z",
+    "base": "http://127.0.0.1:5180",
+    "browser": "152.0.7977.82",
+    "mode": "headless desktop browser; mobile viewport/touch emulation, not physical devices"
+  },
+  "plannedViewports": [
+    [
+      "desktop",
+      {
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1
+      }
+    ],
+    [
+      "mobile-emulated",
+      {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "deviceScaleFactor": 3,
+        "isMobile": true,
+        "hasTouch": true
+      }
+    ]
+  ],
+  "physicalDevicesVerified": false,
+  "screenshots": [
+    "desktop-formation.png",
+    "desktop-forming-resize-390x844.png",
+    "desktop-forming-resize-844x390.png",
+    "desktop-forming-resize-320x740.png",
+    "desktop-forming-resize-1440x900.png",
+    "desktop-loosening.png",
+    "desktop-body.png",
+    "desktop-body-after-30s.png",
+    "desktop-returned-released.png",
+    "desktop-paused-resized.png",
+    "desktop-deep-reload.png",
+    "mobile-emulated-formation.png",
+    "mobile-emulated-forming-resize-390x844.png",
+    "mobile-emulated-forming-resize-844x390.png",
+    "mobile-emulated-forming-resize-320x740.png",
+    "mobile-emulated-forming-resize-1440x900.png",
+    "mobile-emulated-loosening.png",
+    "mobile-emulated-body.png",
+    "mobile-emulated-body-after-30s.png",
+    "mobile-emulated-returned-released.png",
+    "mobile-emulated-paused-resized.png",
+    "mobile-emulated-deep-reload.png",
+    "released-1440x900-to-390x844.png",
+    "released-1440x900-to-844x390.png",
+    "released-1440x900-to-320x740.png",
+    "released-1440x900-to-1440x900.png",
+    "released-390x844-to-390x844.png",
+    "released-390x844-to-844x390.png",
+    "released-390x844-to-320x740.png",
+    "released-390x844-to-1440x900.png",
+    "released-844x390-to-390x844.png",
+    "released-844x390-to-844x390.png",
+    "released-844x390-to-320x740.png",
+    "released-844x390-to-1440x900.png",
+    "released-320x740-to-390x844.png",
+    "released-320x740-to-844x390.png",
+    "released-320x740-to-320x740.png",
+    "released-320x740-to-1440x900.png",
+    "reduced-motion.png",
+    "webgl-unavailable.png",
+    "float-target-unavailable.png",
+    "shader-failure.png",
+    "context-loss.png"
+  ],
+  "results": [
+    {
+      "label": "desktop-body-visible-pixels",
+      "rendered": {
+        "visibleCssPixels": 2957,
+        "simulationSeconds": 5.042333333333322
+      }
+    },
+    {
+      "label": "desktop-body-after-30s-visible-pixels",
+      "rendered": {
+        "visibleCssPixels": 1236,
+        "simulationSeconds": 35.09459999999936
+      }
+    },
+    {
+      "label": "desktop",
+      "options": {
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1
+      },
+      "passed": true,
+      "checks": "formation/GPU bounds before release on shrink and both rotations/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/live scene ownership across route cycles"
+    },
+    {
+      "label": "mobile-emulated-body-visible-pixels",
+      "rendered": {
+        "visibleCssPixels": 26.666666666666668,
+        "simulationSeconds": 5.940933333333323
+      }
+    },
+    {
+      "label": "mobile-emulated-body-after-30s-visible-pixels",
+      "rendered": {
+        "visibleCssPixels": 872.8888888888889,
+        "simulationSeconds": 36.01139999999936
+      }
+    },
+    {
+      "label": "mobile-emulated",
+      "options": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "deviceScaleFactor": 3,
+        "isMobile": true,
+        "hasTouch": true
+      },
+      "passed": true,
+      "checks": "formation/GPU bounds before release on shrink and both rotations/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/live scene ownership across route cycles"
+    },
+    {
+      "label": "released-1440x900-to-390x844",
+      "passed": true,
+      "projection": {
+        "x": 0.8888947599097967,
+        "y": 0.5718627230676491,
+        "z": 0.9995640301281792,
+        "minX": 0.8846091597722407,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-1440x900-to-844x390",
+      "passed": true,
+      "projection": {
+        "x": 0.8888947599062096,
+        "y": 0.5718627230676491,
+        "z": 0.9995640301281792,
+        "minX": 0.8846091597722409,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-1440x900-to-320x740",
+      "passed": true,
+      "projection": {
+        "x": 0.8888947599097965,
+        "y": 0.5718627230676491,
+        "z": 0.9995640301281792,
+        "minX": 0.8846091597722404,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-1440x900-to-1440x900",
+      "passed": true,
+      "projection": {
+        "x": 0.8888947599097966,
+        "y": 0.5718627230676491,
+        "z": 0.9995640301281792,
+        "minX": 0.8846091597722405,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-390x844-to-390x844",
+      "passed": true,
+      "projection": {
+        "x": 0.8889194049008201,
+        "y": 0.5718510762600818,
+        "z": 0.9995640306248491,
+        "minX": 0.8845587087078238,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-390x844-to-844x390",
+      "passed": true,
+      "projection": {
+        "x": 0.8889194048685336,
+        "y": 0.5718510762600818,
+        "z": 0.9995640306248491,
+        "minX": 0.884558708707824,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-390x844-to-320x740",
+      "passed": true,
+      "projection": {
+        "x": 0.8889194049008201,
+        "y": 0.5718510762600818,
+        "z": 0.9995640306248491,
+        "minX": 0.8845587087078238,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-390x844-to-1440x900",
+      "passed": true,
+      "projection": {
+        "x": 0.88891940490082,
+        "y": 0.5718510762600818,
+        "z": 0.9995640306248491,
+        "minX": 0.8845587087078237,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-844x390-to-390x844",
+      "passed": true,
+      "projection": {
+        "x": 0.8888901209392968,
+        "y": 0.5718685121358823,
+        "z": 0.99956402990242,
+        "minX": 0.8846147691281483,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-844x390-to-844x390",
+      "passed": true,
+      "projection": {
+        "x": 0.8888901209392971,
+        "y": 0.5718685121358823,
+        "z": 0.99956402990242,
+        "minX": 0.8846147691281485,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-844x390-to-320x740",
+      "passed": true,
+      "projection": {
+        "x": 0.8888901209392966,
+        "y": 0.5718685121358823,
+        "z": 0.99956402990242,
+        "minX": 0.8846147691281483,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-844x390-to-1440x900",
+      "passed": true,
+      "projection": {
+        "x": 0.8888901209392966,
+        "y": 0.5718685121358823,
+        "z": 0.99956402990242,
+        "minX": 0.8846147691281483,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-320x740-to-390x844",
+      "passed": true,
+      "projection": {
+        "x": 0.8889056522931659,
+        "y": 0.5718626745902523,
+        "z": 0.9995640301281792,
+        "minX": 0.8845919292843152,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-320x740-to-844x390",
+      "passed": true,
+      "projection": {
+        "x": 0.8889056522895789,
+        "y": 0.5718626745902523,
+        "z": 0.9995640301281792,
+        "minX": 0.8845919292843154,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-320x740-to-320x740",
+      "passed": true,
+      "projection": {
+        "x": 0.8889056522931658,
+        "y": 0.5718626745902523,
+        "z": 0.9995640301281792,
+        "minX": 0.8845919292843151,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "label": "released-320x740-to-1440x900",
+      "passed": true,
+      "projection": {
+        "x": 0.8889056522931658,
+        "y": 0.5718626745902523,
+        "z": 0.9995640301281792,
+        "minX": 0.8845919292843151,
+        "scenes": 1,
+        "released": true
+      }
+    },
+    {
+      "mode": "reduced-motion",
+      "passed": true
+    },
+    {
+      "mode": "webgl-unavailable",
+      "passed": true
+    },
+    {
+      "mode": "float-target-unavailable",
+      "passed": true
+    },
+    {
+      "mode": "shader-failure",
+      "passed": true
+    },
+    {
+      "mode": "context-loss",
+      "passed": true
+    }
+  ],
+  "status": "passed; images require human inspection",
+  "stage": "browser-checks"
+}

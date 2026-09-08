@@ -1,0 +1,25 @@
+{
+  "executedAt": "2026-09-08T06:13:46.091881+00:00",
+  "results": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "log": "unit-tests-candidate-2.txt"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "build-candidate-2.txt"
+    },
+    {
+      "command": "node --check tests/home-browser.mjs",
+      "exitCode": 0,
+      "log": "browser-syntax-candidate-2.txt"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "log": "diff-check-candidate-2.txt"
+    }
+  ]
+}

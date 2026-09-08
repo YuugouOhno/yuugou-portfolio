@@ -47,16 +47,25 @@ void main() {
   }
   // Swim in side lanes, with 80% of the fish farther away. The opaque reading
   // surface additionally keeps links/text clear while fish travel into the lanes.
-  float side = mod(index, 2.0) < 1.0 ? -1.0 : 1.0;
+  // Leave through the closest margin instead of sending half the name across
+  // the opaque copy. The assignment stays fixed for the whole visit.
+  float side = target.x < 0.0 ? -1.0 : 1.0;
   float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
-  vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.15 : .6),
-    sin(uTime * .11 + vel.w * 2.1) * 36.0, depth);
+  // Follow a perspective-correct corridor at the CURRENT depth. A far-away
+  // lane's final x coordinate points offscreen while the fish is still near.
+  float laneX = side * uWorldWidth * .455 * (1.0 - pos.z / 100.0);
   // Reach the exposed margins before receding: a direct diagonal toward the
   // distant lane otherwise spends many seconds hidden under mobile copy.
   // Use current projected position so this remains continuous and resize-safe.
   float screenSide = abs(pos.x) / (uWorldWidth * (1.0 - pos.z / 100.0));
-  lane.z = mix(pos.z, depth, smoothstep(.28, .42, screenSide));
-  flock += limit((lane - pos) * .22, 3.0);
+  // Mobile copy ends at |screenSide|=.43. Start receding only after emerging.
+  float inMargin = smoothstep(.43, .455, screenSide);
+  // Give lateral steering its own budget: normalizing a vector toward z=-160
+  // otherwise reduces its small x correction almost to zero, pulling the fish
+  // back under the copy as perspective shrinks its projected x coordinate.
+  flock += vec3(clamp((laneX - pos.x) * 1.2, -3.0, 3.0),
+    clamp((sin(uTime * .11 + vel.w * 2.1) * 36.0 - pos.y) * .22, -1.4, 1.4) * inMargin,
+    clamp((depth - pos.z) * .22, -1.4, 1.4) * inMargin);
   flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;
   flock -= vel.xyz * .24;
   // Blend forces, never positions. Acceleration and speed are bounded even for

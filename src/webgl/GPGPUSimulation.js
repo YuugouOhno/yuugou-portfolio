@@ -25,7 +25,7 @@ export class GPGPUSimulation {
       velocities.image.data[offset] = .01
       velocities.image.data[offset + 3] = this.groupIds[i]
       if (released >= 1) {
-        const side = i % 2 ? 1 : -1
+        const side = targets[offset] < 0 ? -1 : 1
         // Same near/far lanes as the steering shader, inside the view even on
         // a deep restore. Their simulation coordinates survive every resize.
         positions.image.data[offset] = side * worldWidth * (i % 5 ? 1.15 : .6)

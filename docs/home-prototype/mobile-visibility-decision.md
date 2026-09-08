@@ -4,11 +4,13 @@ project: yuugou-portfolio
 repo: yuugou-portfolio
 created_at: 2026-09-08
 updated_at: 2026-09-08
-status: proposed
+status: superseded
 review_status: pending
 ---
 
 # 本文での魚の描画サイズと移動順
+
+候補1の実測失敗を受け、サイズ補間と移動順は[後続の判断記録](margin-departure-decision.md)で更新した。この文書は候補1時点の判断履歴。
 
 - Context: マネージャー実測のスマホエミュレーション画像で本文の魚が見えなかった。文字用の倍率が本文にも残り、奥行きによって約1px以下へ縮小する。遠方目標への直線的な誘導では、本文の不透明背景の内側に長く留まる。
 - Options: 不透明度や明るさのみを上げる／本文の魚サイズを文字から独立させ、側方へ出てから奥へ誘導する。

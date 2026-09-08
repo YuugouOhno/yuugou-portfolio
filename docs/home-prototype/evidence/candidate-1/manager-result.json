@@ -1,0 +1,27 @@
+{
+  "iteration": 1,
+  "passed": false,
+  "evidencePath": "/private/tmp/yuugou-task1-review/candidate-1/docs/home-prototype/evidence",
+  "summary": "Full browser test fails your new real-render mobile body visibility assertion. Desktop body passes immediately and at +30s. Fix mobile positioning/occlusion and export candidate-2. Manager motion video recording still running and will be available in same evidence directory shortly. Video capture finished; desktop-motion.webm and mobile-emulated-motion.webm are available.",
+  "findings": [
+    "mobile-emulated-body-visible-pixels: body fish not visibly rendered outside opaque copy: {\"visibleCssPixels\":3.111111111111111,\"simulationSeconds\":5.524566666666657}",
+    "Do not lower/remove the assertion. At mobile body arrival only 3.11 visible CSS pixels are outside opaque copy at simulation t=5.52s, versus >4000 for desktop. Inspect the actual screenshot and coordinate/mask flow. Ensure meaningful visible fish outside body content soon after reaching it, and sustained afterwards."
+  ],
+  "environment": {
+    "platform": "darwin",
+    "node": "v26.0.0",
+    "date": "2026-09-08T06:05:37.232Z",
+    "base": "http://127.0.0.1:5180",
+    "browser": "152.0.7977.82",
+    "mode": "headless desktop browser; mobile viewport/touch emulation, not physical devices"
+  },
+  "commands": [
+    "npm ci --ignore-scripts",
+    "npm run dev -- --host 127.0.0.1 --port 5180 --strictPort",
+    "HOME_TEST_URL=http://127.0.0.1:5180 PLAYWRIGHT_MODULE=/private/tmp/yuugou-review-tools/node_modules/playwright/index.mjs node tests/home-browser.mjs"
+  ],
+  "limitations": [
+    "Mobile viewport/touch emulation, not physical phone.",
+    "Independent motion recording is still being produced."
+  ]
+}

@@ -26,10 +26,10 @@ index 0000000..e0d85d2
 +}
 diff --git a/src/glsl/boids/home-velocity.frag b/src/glsl/boids/home-velocity.frag
 new file mode 100644
-index 0000000..10566b5
+index 0000000..42b2cd1
 --- /dev/null
 +++ b/src/glsl/boids/home-velocity.frag
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,76 @@
 +uniform float uDelta;
 +uniform float uTime;
 +uniform float uRelease;
@@ -79,16 +79,25 @@ index 0000000..10566b5
 +  }
 +  // Swim in side lanes, with 80% of the fish farther away. The opaque reading
 +  // surface additionally keeps links/text clear while fish travel into the lanes.
-+  float side = mod(index, 2.0) < 1.0 ? -1.0 : 1.0;
++  // Leave through the closest margin instead of sending half the name across
++  // the opaque copy. The assignment stays fixed for the whole visit.
++  float side = target.x < 0.0 ? -1.0 : 1.0;
 +  float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
-+  vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.15 : .6),
-+    sin(uTime * .11 + vel.w * 2.1) * 36.0, depth);
++  // Follow a perspective-correct corridor at the CURRENT depth. A far-away
++  // lane's final x coordinate points offscreen while the fish is still near.
++  float laneX = side * uWorldWidth * .455 * (1.0 - pos.z / 100.0);
 +  // Reach the exposed margins before receding: a direct diagonal toward the
 +  // distant lane otherwise spends many seconds hidden under mobile copy.
 +  // Use current projected position so this remains continuous and resize-safe.
 +  float screenSide = abs(pos.x) / (uWorldWidth * (1.0 - pos.z / 100.0));
-+  lane.z = mix(pos.z, depth, smoothstep(.28, .42, screenSide));
-+  flock += limit((lane - pos) * .22, 3.0);
++  // Mobile copy ends at |screenSide|=.43. Start receding only after emerging.
++  float inMargin = smoothstep(.43, .455, screenSide);
++  // Give lateral steering its own budget: normalizing a vector toward z=-160
++  // otherwise reduces its small x correction almost to zero, pulling the fish
++  // back under the copy as perspective shrinks its projected x coordinate.
++  flock += vec3(clamp((laneX - pos.x) * 1.2, -3.0, 3.0),
++    clamp((sin(uTime * .11 + vel.w * 2.1) * 36.0 - pos.y) * .22, -1.4, 1.4) * inMargin,
++    clamp((depth - pos.z) * .22, -1.4, 1.4) * inMargin);
 +  flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;
 +  flock -= vel.xyz * .24;
 +  // Blend forces, never positions. Acceleration and speed are bounded even for
@@ -99,10 +108,10 @@ index 0000000..10566b5
 +}
 diff --git a/src/glsl/fish/home-fish.vert b/src/glsl/fish/home-fish.vert
 new file mode 100644
-index 0000000..05a24fd
+index 0000000..407a631
 --- /dev/null
 +++ b/src/glsl/fish/home-fish.vert
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,76 @@
 +uniform float uTime;
 +uniform float uScale;
 +uniform float uFormationScale;
@@ -111,6 +120,7 @@ index 0000000..05a24fd
 +uniform float uLaneFishScale;
 +uniform sampler2D texturePosition;
 +uniform sampler2D textureVelocity;
++uniform sampler2D uTargets;
 +
 +attribute vec2 aReference;
 +attribute vec3 aColor;
@@ -137,6 +147,9 @@ index 0000000..05a24fd
 +  vec4 velData = texture2D(textureVelocity, aReference);
 +
 +  vec3 pos = posData.xyz;
++  // Size follows physical departure from the glyph, including lateral travel.
++  // Waiting for z=-35 left moving phone fish almost subpixel in the margins.
++  float departure = smoothstep(0.0, 6.0, distance(pos, texture2D(uTargets, aReference).xyz));
 +  vec3 vel = velData.xyz;
 +  float phase = posData.w;
 +
@@ -164,7 +177,7 @@ index 0000000..05a24fd
 +  pos.y += uFormationOffsetY * (1.0 - laneWeight);
 +
 +  // Keep each fish's proportions; never scale swimming depth with glyph size.
-+  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, laneWeight);
++  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, departure);
 +  vec3 transformed = rotationMatrix * (animated * aSize * fishScale);
 +
 +  // Apply world position
@@ -229,7 +242,7 @@ index 3050bb1..a71a800 100644
 +import '../components/App.css'
 +import './Home.css'
 +import { Router } from '../router/Router.js'
- 
+
  export function homePage() {
 -  const appContainer = document.getElementById('app')
 -  appContainer.innerHTML = ''
@@ -271,7 +284,7 @@ index 3050bb1..a71a800 100644
 +      </main>
 +      <footer class="home-footer"><span>YuugouOhno</span><a href="#home">先頭へ ↑</a></footer>
 +    </div>`
- 
+
 -  // Mount page content
 -  appContainer.appendChild(App())
 -
@@ -362,20 +375,20 @@ index 3050bb1..a71a800 100644
    }
  }
 diff --git a/src/webgl/FishMesh.js b/src/webgl/FishMesh.js
-index ed2f1ab..cb1aee3 100644
+index ed2f1ab..2aa7a93 100644
 --- a/src/webgl/FishMesh.js
 +++ b/src/webgl/FishMesh.js
 @@ -1,7 +1,7 @@
  import * as THREE from 'three'
- 
+
  // Shader imports
 -import fishVertex from '../glsl/fish/fish.vert?raw'
 +import fishVertex from '../glsl/fish/home-fish.vert?raw'
  import fishFragment from '../glsl/fish/fish.frag?raw'
- 
+
  export class FishMesh {
 @@ -24,9 +24,9 @@ export class FishMesh {
- 
+
      // Group colors - purple spectrum (for normal fish groups 0-2)
      const groupColors = [
 -      new THREE.Color().setHSL(0.92, 0.8, 0.55), // Red-Purple (Magenta)
@@ -385,18 +398,18 @@ index ed2f1ab..cb1aee3 100644
 +      new THREE.Color().setHSL(0.83, 0.4, 0.75), // Purple
 +      new THREE.Color().setHSL(0.72, 0.4, 0.75), // Blue-Purple (Violet)
      ]
- 
+
      // Base geometry (simple cone/pyramid for fish shape)
 @@ -38,6 +38,7 @@ export class FishMesh {
      geometry.index = baseGeometry.index
      geometry.attributes.position = baseGeometry.attributes.position
      geometry.attributes.normal = baseGeometry.attributes.normal
 +    baseGeometry.dispose()
- 
+
      // Instance attributes
      const references = new Float32Array(count * 2)
 @@ -48,8 +49,8 @@ export class FishMesh {
- 
+
      for (let i = 0; i < count; i++) {
        // UV reference to lookup in GPGPU texture
 -      const x = (i % textureSize) / textureSize
@@ -405,8 +418,8 @@ index ed2f1ab..cb1aee3 100644
 +      const y = (Math.floor(i / textureSize) + 0.5) / textureSize
        references[i * 2 + 0] = x
        references[i * 2 + 1] = y
- 
-@@ -110,6 +111,10 @@ export class FishMesh {
+
+@@ -110,8 +111,13 @@ export class FishMesh {
        uniforms: {
          uTime: { value: 0.0 },
          uScale: { value: 1.0 },
@@ -416,11 +429,14 @@ index ed2f1ab..cb1aee3 100644
 +        uLaneFishScale: { value: 1.0 },
          texturePosition: { value: null },
          textureVelocity: { value: null },
++        uTargets: { value: null },
        },
-@@ -128,6 +133,13 @@ export class FishMesh {
+       side: THREE.DoubleSide,
+     })
+@@ -128,12 +134,20 @@ export class FishMesh {
      this.material.uniforms.uScale.value = scale
    }
- 
+
 +  setViewport({ scale, offsetY, laneScaleX, laneFishScale }) {
 +    this.material.uniforms.uFormationScale.value = scale
 +    this.material.uniforms.uFormationOffsetY.value = offsetY
@@ -430,9 +446,16 @@ index ed2f1ab..cb1aee3 100644
 +
    update(elapsed) {
      if (!this.material || !this.gpgpu) return
- 
+
+     this.material.uniforms.uTime.value = elapsed
+     this.material.uniforms.texturePosition.value = this.gpgpu.getPositionTexture()
+     this.material.uniforms.textureVelocity.value = this.gpgpu.getVelocityTexture()
++    this.material.uniforms.uTargets.value = this.gpgpu.targetTexture
+   }
+
+   dispose() {
 diff --git a/src/webgl/GPGPUSimulation.js b/src/webgl/GPGPUSimulation.js
-index c5dca70..4920267 100644
+index c5dca70..a200c77 100644
 --- a/src/webgl/GPGPUSimulation.js
 +++ b/src/webgl/GPGPUSimulation.js
 @@ -1,174 +1,58 @@
@@ -444,7 +467,7 @@ index c5dca70..4920267 100644
 -import velocityFragment from '../glsl/boids/velocity.frag?raw'
 +import positionFragment from '../glsl/boids/home-position.frag?raw'
 +import velocityFragment from '../glsl/boids/home-velocity.frag?raw'
- 
+
  export class GPGPUSimulation {
 -  constructor(renderer, config, groupIds = null) {
 -    this.renderer = renderer
@@ -462,7 +485,7 @@ index c5dca70..4920267 100644
 -    this.positionVariable = null
 -    this.velocityVariable = null
    }
- 
+
 -  init() {
 -    this.gpuCompute = new GPUComputationRenderer(
 -      this.textureSize,
@@ -531,7 +554,7 @@ index c5dca70..4920267 100644
 +      velocities.image.data[offset] = .01
 +      velocities.image.data[offset + 3] = this.groupIds[i]
 +      if (released >= 1) {
-+        const side = i % 2 ? 1 : -1
++        const side = targets[offset] < 0 ? -1 : 1
 +        // Same near/far lanes as the steering shader, inside the view even on
 +        // a deep restore. Their simulation coordinates survive every resize.
 +        positions.image.data[offset] = side * worldWidth * (i % 5 ? 1.15 : .6)
@@ -569,7 +592,7 @@ index c5dca70..4920267 100644
 +    const error = this.gpuCompute.init()
 +    if (error) throw new Error(error)
    }
- 
+
 -  fillVelocityTexture(texture) {
 -    const data = texture.image.data
 -    const groupCount = this.config.groupCount || 3
@@ -651,11 +674,11 @@ index c5dca70..4920267 100644
 -    // Compute
      this.gpuCompute.compute()
    }
- 
+
 @@ -180,76 +64,13 @@ export class GPGPUSimulation {
      return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture
    }
- 
+
 -  setPredatorPosition(pos) {
 -    const velUniforms = this.velocityVariable.material.uniforms
 -    velUniforms.uPredatorPos.value.copy(pos)
@@ -750,7 +773,7 @@ index 23add2c..1c3b16f 100644
 +import { advanceRelease, easeRelease } from './homeMotion.js'
 +import { createNameTargets } from './nameTargets.js'
 +import { fitNameToViewport } from './homeLayout.js'
- 
+
 +// Home owns this scene; AR has its own scene, mesh and simulation.
  export class Scene {
 -  constructor() {
@@ -828,7 +851,7 @@ index 23add2c..1c3b16f 100644
 -    this._onResize    = this.onResize.bind(this)
 -    this._onMouseMove = this.onMouseMove.bind(this)
    }
- 
+
    init() {
 -    this.initRenderer()
 -    this.initScene()
@@ -958,7 +981,7 @@ index 23add2c..1c3b16f 100644
 +    document.addEventListener('visibilitychange', this.onVisibility)
 +    this.frame = requestAnimationFrame(this.animate)
    }
- 
+
 -  initCSS3D() {
 -    this.cssRenderer = new CSS3DRenderer()
 -    this.cssRenderer.setSize(window.innerWidth, window.innerHeight)
@@ -981,7 +1004,7 @@ index 23add2c..1c3b16f 100644
 +    // Inspectable state for browser verification; no global scene handle.
 +    this.container.dataset.release = state.released ? 'released' : 'forming'
    }
- 
+
 -  createContentPanels() {
 -    const contentRadius = 50
 -    const numStrips = 20
@@ -1533,7 +1556,7 @@ index 23add2c..1c3b16f 100644
 -            const offsetQuat = new THREE.Quaternion().setFromAxisAngle(camRight, angle)
 -            const stripDir   = camFwd.clone().applyQuaternion(offsetQuat)
 +  }
- 
+
 -            obj.position.copy(stripDir.clone().multiplyScalar(contentRadius))
 -            obj.quaternion.copy(this.cam.orientation)
 -          })
@@ -1557,14 +1580,14 @@ index 23add2c..1c3b16f 100644
 +      this.onFailure()
      }
 +  }
- 
+
 -    if (this.cssRenderer) this.cssRenderer.render(this.cssScene, this.camera)
 +  setPaused(paused) {
 +    this.paused = paused
 +    this.onVisibility()
 +    return paused
    }
- 
+
    dispose() {
 +    if (this.disposed) return
      this.disposed = true
