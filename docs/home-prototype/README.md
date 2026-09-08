@@ -10,6 +10,8 @@ Homeは通常のHTMLを先に表示し、魚の実メッシュとGPU Boidsで `Y
 
 [今回の差分](evidence/mobile-visibility.diff) / [試作全体の差分（f2d8b46基準）](evidence/prototype.diff) / [判断記録](mobile-visibility-decision.md) / [独立AIレビュー](ai-review.md)
 
+P1差し戻し後の[独立AI再レビュー](independent-review-final.md)も実施済み。コード上の追加修正必須指摘はないが、候補1の視覚レビューは未実施であり、既存P1は未解決。
+
 | 対象 | 変更と理由 |
 | --- | --- |
 | `homeLayout.js`, `FishMesh.js`, `home-fish.vert` | 文字形成用の倍率から本文の魚サイズを独立。横向きの最小の魚は近方で約3 CSS px、遠方で約1.6px。初回の画面幅やリサイズで本文の魚が過小にならない。サイズは実際の深度に応じて連続補間する。 |
@@ -24,18 +26,22 @@ Homeは通常のHTMLを先に表示し、魚の実メッシュとGPU Boidsで `Y
 
 | 検証 | 結果 |
 | --- | --- |
-| `npm test` | 8件成功。[結果](evidence/unit-tests.txt)。文字順、拘束往復、解放ラッチ、深い初期位置、進捗境界、時間差、リサイズ投影と本文魚サイズ。 |
+| `npm test` | 差し戻し後の再実行でも8件成功。[今回結果](evidence/unit-tests-final.txt)。文字順、拘束往復、解放ラッチ、深い初期位置、進捗境界、時間差、リサイズ投影と本文魚サイズ。 |
 | テスト先行 | 新しい魚サイズ検査を先に追加し、未実装時の失敗を確認。[Red結果](evidence/body-size-red.txt)。 |
 | `node --test --experimental-test-coverage tests/*.test.js` | `homeLayout.js`・`homeMotion.js` のline/branch/function 100%。[結果](evidence/unit-coverage.txt)。GLSL・DOM・GPUはこの割合に含まない。 |
-| `npm run build` | 成功。[出力](evidence/build.txt)。既存ARの静的/動的import混在と大きなchunkの警告あり。 |
+| `npm run build` | 差し戻し後の再実行でも成功。[今回出力](evidence/build-final.txt)。既存ARの静的/動的import混在と大きなchunkの警告あり。 |
 | `node --check tests/home-browser.mjs` | 成功。 |
 | `git diff --check` | 成功。ログ出力の行末空白のみ整形。 |
 
 ローカル環境: macOS、Node v22.21.1、Vite 7.2.6、three 0.152.0。既存node_modules使用。ブラウザはユーザー指定のマネージャー環境で補完し、実装担当によるsandbox権限変更・サーバー起動制約の迂回は行わない。
 
+差し戻し後の[検証実行記録](evidence/local-verification-final.json)を保存。候補1のアプリ・テスト・設定・静的ファイル66件は作業ツリーとバイト単位で一致した：[候補照合](evidence/candidate-1-source-verification.json)。AR・ForLLM・ルーター・共有シェーダー・lockfile・共通CSSは基準 `f2d8b46` から差分がない：[影響範囲の照合](evidence/unrelated-source-verification.json)。この比較は実機ARの検証を意味しない。
+
 ## ブラウザ検証
 
 候補1を `/private/tmp/yuugou-task1-review/candidate-1` にソースのSHA-256 manifestとともに書き出し、`ready.json` でマネージャーへ共有済み。指定の20分待機後も結果は未着。[引渡し記録](evidence/manager-handoff.json) / [現在のブラウザ状態](evidence/browser-results.json)。アプリ・テスト等51ファイルは候補とSHA-256で一致した：[照合結果](evidence/source-verification.json)。候補ソースは固定しており、返却結果の受領・確認・画像の取り込み・独立視覚レビューが残る。
+
+P1差し戻し後、14:10 JSTに `ready.json` の再検証依頼を更新。同じ候補1を維持して14:12〜14:32 JSTの20分間、30秒間隔で40回確認したが `result-1.json` は未着だった：[今回の待機記録](evidence/manager-wait-final.json)。候補の再検証結果・画像・動画を受領したとは報告できず、R1・R2の視覚確認とR7・R8の必須成果は未完了。新しいブラウザ成功記録や候補画像は追加していない。今回の変更は再検証ログ・ソース照合・レビュー文書のみで、アプリ・テストのソースは候補1から変更していない。
 
 過去のマネージャー検査はChrome 152.0.7977.82で23結果・41画像を取得したが、スマホ本文では魚が判別できなかった。[修正前の文字](evidence/before-mobile-emulated-formation.png) / [修正前の本文](evidence/before-mobile-emulated-body.png)。これらは今回候補の成功証拠として扱わない。
 

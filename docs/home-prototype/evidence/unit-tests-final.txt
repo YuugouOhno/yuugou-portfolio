@@ -1,0 +1,62 @@
+
+> yuugou-portfolio@0.0.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# Subtest: body fish retain a discernible projected size regardless of the initial name width
+ok 1 - body fish retain a discernible projected size regardless of the initial name width
+  ---
+  duration_ms: 0.496334
+  type: 'test'
+  ...
+# Subtest: an existing formation fits immediately through shrinking and rotation without moving fish
+ok 2 - an existing formation fits immediately through shrinking and rotation without moving fish
+  ---
+  duration_ms: 0.613833
+  type: 'test'
+  ...
+# Subtest: released near and far lanes retain xyz projection through every resize, without changing simulation positions
+ok 3 - released near and far lanes retain xyz projection through every resize, without changing simulation positions
+  ---
+  duration_ms: 0.88775
+  type: 'test'
+  ...
+# Subtest: formation loosens with actual hero progress and can reverse before release
+ok 4 - formation loosens with actual hero progress and can reverse before release
+  ---
+  duration_ms: 0.716834
+  type: 'test'
+  ...
+# Subtest: release is latched for this visit, including deep restoration and resize
+ok 5 - release is latched for this visit, including deep restoration and resize
+  ---
+  duration_ms: 0.064792
+  type: 'test'
+  ...
+# Subtest: large scroll jumps and background-tab time cannot jump the release blend
+ok 6 - large scroll jumps and background-tab time cannot jump the release blend
+  ---
+  duration_ms: 0.12625
+  type: 'test'
+  ...
+# Subtest: responsive lines preserve the exact name and case
+ok 7 - responsive lines preserve the exact name and case
+  ---
+  duration_ms: 0.071542
+  type: 'test'
+  ...
+# Subtest: overscroll is clamped and release is continuous at the configurable boundaries
+ok 8 - overscroll is clamped and release is continuous at the configurable boundaries
+  ---
+  duration_ms: 0.248083
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 60.146375

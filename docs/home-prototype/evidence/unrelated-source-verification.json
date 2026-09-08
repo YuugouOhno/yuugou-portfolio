@@ -1,0 +1,18 @@
+{
+  "checkedAt": "2026-09-08T05:16:32.014363+00:00",
+  "baseline": "f2d8b46",
+  "paths": [
+    "src/pages/AR",
+    "src/pages/ForLLM",
+    "src/webgl/ar",
+    "src/router/Router.js",
+    "src/glsl/fish/fish.frag",
+    "src/glsl/fish/fish.vert",
+    "src/glsl/boids/velocity.frag",
+    "src/glsl/boids/position.frag",
+    "package-lock.json",
+    "src/style.css"
+  ],
+  "unchanged": true,
+  "scope": "source comparison only; not physical AR verification"
+}

@@ -1,0 +1,19 @@
+{
+  "iteration": 1,
+  "candidatePath": "/private/tmp/yuugou-task1-review/candidate-1",
+  "requestedAt": "2026-09-08T05:10:46.745180+00:00",
+  "monitorStartedAt": "2026-09-08T05:12:46.748677+00:00",
+  "checkedAt": "2026-09-08T05:33:35.815143+00:00",
+  "monitorIntervalSeconds": 30,
+  "completedPolls": 40,
+  "monitorWindowSeconds": 1200,
+  "resultPath": "/private/tmp/yuugou-task1-review/result-1.json",
+  "resultReceived": false,
+  "status": "result pending; browser and visual acceptance incomplete",
+  "request": {
+    "iteration": 1,
+    "candidatePath": "/private/tmp/yuugou-task1-review/candidate-1",
+    "summary": "Body fish sizes now independent of glyph width (~3px near / 1.6px far), side-first continuous steering before depth, Home-only brightness +35%. New rendered triangle visibility check excluding opaque copy/header/footer at body and +30s; 8 unit tests and build passed. Please run full browser suite and inspect initial phone lettering, immediate body +30s, gradual scroll for lateral motion/clipping. Include gradual sequence/video and environment/exact lockfile validation. Source manifest included. Resumed after P1 feedback: same immutable candidate-1 sources confirmed (66 application/config/public/test files byte-identical). Please return result-1.json with initial desktop/mobile lettering, gradual scroll recording, body arrival and +30s actual visibility. Worker is waiting and will import artifacts and request independent visual review before completing.",
+    "requestedAt": "2026-09-08T05:10:46.745180+00:00"
+  }
+}

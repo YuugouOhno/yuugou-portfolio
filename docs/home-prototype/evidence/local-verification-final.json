@@ -1,0 +1,28 @@
+{
+  "checkedAt": "2026-09-08T05:11:07.373066+00:00",
+  "execution": "worker sandbox",
+  "node": "v22.21.1",
+  "results": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "log": "unit-tests-final.txt"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "build-final.txt"
+    },
+    {
+      "command": "node --check tests/home-browser.mjs",
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "output": ""
+    }
+  ],
+  "logFormatting": "Trailing whitespace removed from nonempty text logs."
+}
