@@ -37,6 +37,14 @@ P1差し戻し後の[独立AI再レビュー](independent-review-final.md)も実
 
 差し戻し後の[検証実行記録](evidence/local-verification-final.json)を保存。候補1のアプリ・テスト・設定・静的ファイル66件は作業ツリーとバイト単位で一致した：[候補照合](evidence/candidate-1-source-verification.json)。AR・ForLLM・ルーター・共有シェーダー・lockfile・共通CSSは基準 `f2d8b46` から差分がない：[影響範囲の照合](evidence/unrelated-source-verification.json)。この比較は実機ARの検証を意味しない。
 
+## 今回の再開確認（14:37〜14:57 JST）
+
+2026-09-08、候補1の `ready.json` を14:37 JSTに更新し、30秒の待機を挟みながら20分超確認したが、`result-1.json` は未受領だった。[今回の待機記録](evidence/manager-wait-resumed.json)。候補ディレクトリへの依存導入は確認できたが、候補の画像・ブラウザ結果は取得していない。**既存P1は未解決であり、人間の成果確認を求められる状態には達していない。**
+
+`npm test` は8件成功、`npm run build` 成功、ブラウザ検査スクリプトの構文確認と `git diff --check` も成功：[今回の実行記録](evidence/local-verification-resumed.json)。候補1と作業ツリーのアプリ・テスト等66ファイルが一致することを再確認した：[ソース照合](evidence/candidate-1-source-verification.json)。別AIによるコード再レビューでも追加の修正必須指摘はなかったが、候補の独立視覚レビューは未実施。
+
+今回の差分は検証記録・レビュー文書のみ。アプリやテストを変更して検証候補との対応を失うことは避けた。マネージャーから結果を受領し、画像・連続記録を取り込み、独立視覚レビューで確認する工程が残る。新たな権限要求、権限迂回、公開・マージ・デプロイ、人間の成果確認の代行は行っていない。
+
 ## ブラウザ検証
 
 候補1を `/private/tmp/yuugou-task1-review/candidate-1` にソースのSHA-256 manifestとともに書き出し、`ready.json` でマネージャーへ共有済み。指定の20分待機後も結果は未着。[引渡し記録](evidence/manager-handoff.json) / [現在のブラウザ状態](evidence/browser-results.json)。アプリ・テスト等51ファイルは候補とSHA-256で一致した：[照合結果](evidence/source-verification.json)。候補ソースは固定しており、返却結果の受領・確認・画像の取り込み・独立視覚レビューが残る。

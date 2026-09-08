@@ -1,7 +1,7 @@
 {
-  "checkedAt": "2026-09-08T05:33:35.815143+00:00",
+  "checkedAt": "2026-09-08T05:38:24.030456+00:00",
   "candidatePath": "/private/tmp/yuugou-task1-review/candidate-1",
-  "baseCommit": "c65bfa0f9bd0927f4984d62ec7bad832f95a4a29",
+  "baseCommit": "e8710ac0a03d10d076bbb78a234200e21b6bdd02",
   "sha256": {
     "index.html": "9f057bcfe92b24f88f26c8b5fd602e3244967b7f0f27e250caacc01aa9ccb17a",
     "netlify.toml": "2983fd3ba1315bc113821736f32add41d97780cb9bb044ee5607a3e62d0e3740",
