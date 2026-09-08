@@ -1,0 +1,28 @@
+{
+  "status": "awaiting-manager-result; current candidate browser verification not completed",
+  "iteration": 3,
+  "candidatePath": "/private/tmp/yuugou-task1-review/candidate-3",
+  "readyPath": "/private/tmp/yuugou-task1-review/ready.json",
+  "expectedResultPath": "/private/tmp/yuugou-task1-review/result-3.json",
+  "checkedAt": "2026-09-08T06:46:34.537478+00:00",
+  "waitedSeconds": 1703,
+  "plannedViewports": [
+    {
+      "label": "desktop",
+      "width": 1440,
+      "height": 900,
+      "dpr": 1
+    },
+    {
+      "label": "mobile-emulated",
+      "width": 390,
+      "height": 844,
+      "dpr": 3,
+      "touch": true
+    }
+  ],
+  "results": [],
+  "screenshots": [],
+  "physicalDevicesVerified": false,
+  "note": "Candidate-1 actual result received: mobile body rendering failed. Candidate-2 full browser suite passed, but independent visual review required more meaningful immediate mobile body fish. Candidate-3 application/test sources are immutable and await manager execution/result/motion evidence. No candidate-2 success is transferred to candidate-3. Worker has not launched browser/server or changed sandbox permissions."
+}

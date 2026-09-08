@@ -1,0 +1,28 @@
+{
+  "status": "awaiting-manager-result; current candidate browser verification not completed",
+  "iteration": 1,
+  "candidatePath": "/private/tmp/yuugou-task1-review/candidate-1",
+  "readyPath": "/private/tmp/yuugou-task1-review/ready.json",
+  "expectedResultPath": "/private/tmp/yuugou-task1-review/result-1.json",
+  "checkedAt": "2026-09-08T14:06:05.654365+09:00",
+  "waitedSeconds": 1284,
+  "plannedViewports": [
+    {
+      "label": "desktop",
+      "width": 1440,
+      "height": 900,
+      "dpr": 1
+    },
+    {
+      "label": "mobile-emulated",
+      "width": 390,
+      "height": 844,
+      "dpr": 3,
+      "touch": true
+    }
+  ],
+  "results": [],
+  "screenshots": [],
+  "physicalDevicesVerified": false,
+  "note": "No browser/server launch attempted by this worker. User-requested manager handoff published, polled every approximately 30 seconds for over 20 minutes, no result received. Prior manager screenshots are before-change comparison only."
+}

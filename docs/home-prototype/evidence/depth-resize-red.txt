@@ -1,0 +1,38 @@
+TAP version 13
+# Subtest: an existing formation fits immediately through shrinking and rotation without moving fish
+ok 1 - an existing formation fits immediately through shrinking and rotation without moving fish
+  ---
+  duration_ms: 0.909667
+  type: 'test'
+  ...
+# Subtest: released near and far lanes retain xyz projection through every resize, without changing simulation positions
+not ok 2 - released near and far lanes retain xyz projection through every resize, without changing simulation positions
+  ---
+  duration_ms: 1.848667
+  type: 'test'
+  location: '/Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/tests/home-layout.test.js:34:1'
+  failureType: 'testCodeFailure'
+  error: 'side lane lost after 1440x900 -> 1440x900: NaN'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///Users/yuugou/purple/.local/workspace-yuugou-portfolio/worktrees/05922c6c-0221-4802-8e56-19a09e581142/tests/home-layout.test.js:49:20)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 52.498292

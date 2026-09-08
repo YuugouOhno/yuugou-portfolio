@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 
 // Shader imports
-import fishVertex from '../glsl/fish/fish.vert?raw'
+import fishVertex from '../glsl/fish/home-fish.vert?raw'
 import fishFragment from '../glsl/fish/fish.frag?raw'
 
 export class FishMesh {
@@ -24,9 +24,9 @@ export class FishMesh {
 
     // Group colors - purple spectrum (for normal fish groups 0-2)
     const groupColors = [
-      new THREE.Color().setHSL(0.92, 0.8, 0.55), // Red-Purple (Magenta)
-      new THREE.Color().setHSL(0.83, 0.8, 0.55), // Purple
-      new THREE.Color().setHSL(0.72, 0.8, 0.55), // Blue-Purple (Violet)
+      new THREE.Color().setHSL(0.92, 0.4, 0.75), // Red-Purple (Magenta)
+      new THREE.Color().setHSL(0.83, 0.4, 0.75), // Purple
+      new THREE.Color().setHSL(0.72, 0.4, 0.75), // Blue-Purple (Violet)
     ]
 
     // Base geometry (simple cone/pyramid for fish shape)
@@ -38,6 +38,7 @@ export class FishMesh {
     geometry.index = baseGeometry.index
     geometry.attributes.position = baseGeometry.attributes.position
     geometry.attributes.normal = baseGeometry.attributes.normal
+    baseGeometry.dispose()
 
     // Instance attributes
     const references = new Float32Array(count * 2)
@@ -48,8 +49,8 @@ export class FishMesh {
 
     for (let i = 0; i < count; i++) {
       // UV reference to lookup in GPGPU texture
-      const x = (i % textureSize) / textureSize
-      const y = Math.floor(i / textureSize) / textureSize
+      const x = ((i % textureSize) + 0.5) / textureSize
+      const y = (Math.floor(i / textureSize) + 0.5) / textureSize
       references[i * 2 + 0] = x
       references[i * 2 + 1] = y
 
@@ -110,8 +111,13 @@ export class FishMesh {
       uniforms: {
         uTime: { value: 0.0 },
         uScale: { value: 1.0 },
+        uFormationScale: { value: 1.0 },
+        uFormationOffsetY: { value: 0.0 },
+        uLaneScaleX: { value: 1.0 },
+        uLaneFishScale: { value: 1.0 },
         texturePosition: { value: null },
         textureVelocity: { value: null },
+        uTargets: { value: null },
       },
       side: THREE.DoubleSide,
     })
@@ -128,12 +134,20 @@ export class FishMesh {
     this.material.uniforms.uScale.value = scale
   }
 
+  setViewport({ scale, offsetY, laneScaleX, laneFishScale }) {
+    this.material.uniforms.uFormationScale.value = scale
+    this.material.uniforms.uFormationOffsetY.value = offsetY
+    this.material.uniforms.uLaneScaleX.value = laneScaleX
+    this.material.uniforms.uLaneFishScale.value = laneFishScale
+  }
+
   update(elapsed) {
     if (!this.material || !this.gpgpu) return
 
     this.material.uniforms.uTime.value = elapsed
     this.material.uniforms.texturePosition.value = this.gpgpu.getPositionTexture()
     this.material.uniforms.textureVelocity.value = this.gpgpu.getVelocityTexture()
+    this.material.uniforms.uTargets.value = this.gpgpu.targetTexture
   }
 
   dispose() {

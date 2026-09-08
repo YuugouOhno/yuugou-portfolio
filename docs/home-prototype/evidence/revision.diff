@@ -1,0 +1,283 @@
+diff --git a/src/webgl/FishMesh.js b/src/webgl/FishMesh.js
+index 1286a31..4876320 100644
+--- a/src/webgl/FishMesh.js
++++ b/src/webgl/FishMesh.js
+@@ -129,6 +129,11 @@ export class FishMesh {
+     this.material.uniforms.uScale.value = scale
+   }
+ 
++  setViewport({ scale, offsetY }) {
++    this.mesh.scale.setScalar(scale)
++    this.mesh.position.y = offsetY
++  }
++
+   update(elapsed) {
+     if (!this.material || !this.gpgpu) return
+ 
+diff --git a/src/webgl/GPGPUSimulation.js b/src/webgl/GPGPUSimulation.js
+index e3899e3..970a167 100644
+--- a/src/webgl/GPGPUSimulation.js
++++ b/src/webgl/GPGPUSimulation.js
+@@ -44,9 +44,7 @@ export class GPGPUSimulation {
+     if (error) throw new Error(error)
+   }
+ 
+-  setTargets(targets, worldWidth) {
+-    this.targetTexture.image.data.set(targets)
+-    this.targetTexture.needsUpdate = true
++  setWorldWidth(worldWidth) {
+     this.velocityVariable.material.uniforms.uWorldWidth.value = worldWidth
+   }
+ 
+diff --git a/src/webgl/Scene.js b/src/webgl/Scene.js
+index 8235757..90819ba 100644
+--- a/src/webgl/Scene.js
++++ b/src/webgl/Scene.js
+@@ -3,6 +3,7 @@ import { GPGPUSimulation } from './GPGPUSimulation.js'
+ import { FishMesh } from './FishMesh.js'
+ import { advanceRelease, easeRelease } from './homeMotion.js'
+ import { createNameTargets } from './nameTargets.js'
++import { fitNameToViewport } from './homeLayout.js'
+ 
+ // Home owns this scene; AR has its own scene, mesh and simulation.
+ export class Scene {
+@@ -48,10 +49,18 @@ export class Scene {
+     this.gpgpu.update(0, 0, this.blend)
+     this.fishMesh.setGPGPU(this.gpgpu)
+     this.fishMesh.setScale(this.fishScale)
++    this.fishMesh.setViewport(this.viewportFit)
+     this.scene.add(this.fishMesh.mesh)
+     this.fishMesh.update(0)
+     this.renderer.render(this.scene, this.camera)
+-    this.resizeObserver = new ResizeObserver(() => this.resize())
++    this.resizeObserver = new ResizeObserver(() => {
++      try {
++        this.resize()
++      } catch (error) {
++        console.warn('Home fish resize failed; HTML remains available.', error)
++        this.onFailure()
++      }
++    })
+     this.resizeObserver.observe(this.container)
+     document.addEventListener('visibilitychange', this.onVisibility)
+     this.frame = requestAnimationFrame(this.animate)
+@@ -73,14 +82,21 @@ export class Scene {
+     this.renderer.setSize(width, height)
+     this.camera.aspect = width / height
+     this.camera.updateProjectionMatrix()
+-    this.worldWidth = this.worldHeight * width / height
+-    this.targets = createNameTargets(this.config.boidCount, width, height, this.worldHeight)
+-    this.fishScale = Math.min(this.worldWidth * .9, 135) / 270
++    if (!this.targets) {
++      // Wrapping is chosen once per visit. Reflowing target indices on resize
++      // would scatter letters while the fish swim to their new assignments.
++      this.targets = createNameTargets(this.config.boidCount, width, height, this.worldHeight)
++      this.formationWidth = Math.min(this.worldHeight * width / height * .9, 135)
++      this.fishScale = this.formationWidth / 270
++    }
++    this.viewportFit = fitNameToViewport(this.formationWidth, width, height, this.worldHeight)
++    this.worldWidth = this.viewportFit.simulationWidth
+     if (this.gpgpu) {
+-      // Update attraction only. Never replace current fish positions during resizing.
+-      this.gpgpu.setTargets(this.targets, this.worldWidth)
+-      this.fishMesh.setScale(this.fishScale)
+-      if (this.paused) this.renderer.render(this.scene, this.camera)
++      this.gpgpu.setWorldWidth(this.worldWidth)
++      this.fishMesh.setViewport(this.viewportFit)
++      // Apply projection and presentation together, without a simulation step
++      // or a frame showing the old formation outside the new camera bounds.
++      this.renderer.render(this.scene, this.camera)
+     }
+   }
+ 
+diff --git a/tests/home-browser.mjs b/tests/home-browser.mjs
+index 1359f19..af3fc02 100644
+--- a/tests/home-browser.mjs
++++ b/tests/home-browser.mjs
+@@ -7,21 +7,49 @@ import { pathToFileURL } from 'node:url'
+ 
+ const output = 'docs/home-prototype/evidence'
+ const base = process.env.HOME_TEST_URL || 'http://127.0.0.1:5173'
+-const report = { environment: { platform: process.platform, node: process.version }, results: [], status: 'running' }
++const viewports = [
++  ['desktop', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 }],
++  ['mobile-emulated', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true }],
++]
++const report = {
++  environment: { platform: process.platform, node: process.version, date: new Date().toISOString(), base },
++  plannedViewports: viewports, physicalDevicesVerified: false, screenshots: [],
++  results: [], status: 'running', stage: 'browser-launch',
++}
+ await mkdir(output, { recursive: true })
+ let browser
+ try {
+   const modulePath = process.env.PLAYWRIGHT_MODULE
+   const { chromium } = await import(modulePath ? pathToFileURL(modulePath).href : 'playwright')
+   browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 'chrome', headless: true })
++  report.stage = 'browser-checks'
+   report.environment.browser = browser.version()
+   report.environment.mode = 'headless desktop browser; mobile viewport/touch emulation, not physical devices'
+   const errors = []
+   async function contextFor(options = {}) {
+     const context = await browser.newContext(options)
+     // Isolate existing third-party scripts from local visual verification.
+-    await context.route('**/*', route => new URL(route.request().url()).origin === new URL(base).origin
+-      ? route.continue() : route.abort())
++    await context.route('**/*', async route => {
++      const url = new URL(route.request().url())
++      if (url.origin !== new URL(base).origin) return route.abort()
++      if (url.pathname !== '/src/webgl/Scene.js') return route.continue()
++      // Dev-server test instrumentation only: inspect real GPU positions and
++      // live scene ownership without exposing a scene handle in application code.
++      const response = await route.fetch()
++      await route.fulfill({ response, body: await response.text() + `
++        window.__homeScenes = new Set();
++        const originalInit = Scene.prototype.init;
++        Scene.prototype.init = function () {
++          originalInit.call(this);
++          window.__homeScenes.add(this);
++        };
++        const originalDispose = Scene.prototype.dispose;
++        Scene.prototype.dispose = function () {
++          originalDispose.call(this);
++          window.__homeScenes.delete(this);
++        };
++      ` })
++    })
+     const page = await context.newPage()
+     page.on('pageerror', error => errors.push(error.message))
+     return { context, page }
+@@ -29,18 +57,51 @@ try {
+   async function capture(page, name) {
+     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${name}: horizontal overflow`)
+     await page.screenshot({ path: `${output}/${name}.png` })
++    report.screenshots.push(`${name}.png`)
+   }
+   const waitForFish = page => page.waitForSelector('.has-fish .home-ocean canvas')
+-  for (const [label, options] of [
+-    ['desktop', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 }],
+-    ['mobile-emulated', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true }],
+-  ]) {
++  async function assertFormationFits(page) {
++    const bounds = await page.evaluate(() => {
++      const scene = [...window.__homeScenes][0]
++      const { renderer, camera, fishMesh, gpgpu } = scene
++      const positions = new Float32Array(scene.config.boidCount * 4)
++      renderer.readRenderTargetPixels(gpgpu.gpuCompute.getCurrentRenderTarget(gpgpu.positionVariable),
++        0, 0, gpgpu.textureSize, gpgpu.textureSize, positions)
++      fishMesh.mesh.updateMatrixWorld(true)
++      const point = camera.position.clone()
++      let x = 0, y = 0
++      for (let i = 0; i < positions.length; i += 4) {
++        point.set(positions[i], positions[i + 1], positions[i + 2])
++          .applyMatrix4(fishMesh.mesh.matrixWorld).project(camera)
++        x = Math.max(x, Math.abs(point.x))
++        y = Math.max(y, Math.abs(point.y))
++      }
++      return { x, y, scenes: window.__homeScenes.size, released: scene.visit.released }
++    })
++    assert.equal(bounds.scenes, 1)
++    assert.equal(bounds.released, false)
++    assert.ok(bounds.x > .2 && bounds.x < .95, `fish formation clipped horizontally: ${JSON.stringify(bounds)}`)
++    assert.ok(bounds.y > .05 && bounds.y < .85, `fish formation clipped vertically: ${JSON.stringify(bounds)}`)
++  }
++  for (const [label, options] of viewports) {
+     const { context, page } = await contextFor(options)
+     await page.goto(base)
+     await waitForFish(page)
+     await page.evaluate(() => document.fonts.ready)
+     assert.equal(await page.locator('h1').textContent(), 'YuugouOhno')
++    await assertFormationFits(page)
+     await capture(page, `${label}-formation`)
++    // Regress the reported bug BEFORE release, including both rotation directions.
++    for (const [width, height] of [[390, 844], [844, 390], [320, 740], [1440, 900]]) {
++      await page.setViewportSize({ width, height })
++      await page.waitForFunction(({ width, height }) => {
++        const scene = [...window.__homeScenes][0]
++        return Math.abs(scene.camera.aspect - width / height) < .001
++      }, { width, height })
++      await assertFormationFits(page)
++      await capture(page, `${label}-forming-resize-${width}x${height}`)
++    }
++    await page.setViewportSize(options.viewport)
+     await page.evaluate(() => scrollTo(0, document.querySelector('.home-hero').offsetHeight * .4))
+     await page.waitForTimeout(700)
+     await capture(page, `${label}-loosening`)
+@@ -84,19 +145,22 @@ try {
+     for (let visit = 0; visit < 3; visit++) {
+       await page.locator('a[data-route][href="/forllm"]').click()
+       assert.equal(await page.locator('.home-ocean').count(), 0)
++      assert.equal(await page.evaluate(() => window.__homeScenes.size), 0)
+       assert.equal(await page.locator('html').evaluate(el => el.classList.contains('home-active')), false)
+       await page.goBack()
+       await waitForFish(page)
+       assert.equal(await page.locator('.home-ocean canvas').count(), 1)
++      assert.equal(await page.evaluate(() => window.__homeScenes.size), 1)
+     }
+     await page.locator('a[data-route][href="/ar"]').click()
+     assert.equal(await page.locator('.home-ocean').count(), 0)
++    assert.equal(await page.evaluate(() => window.__homeScenes.size), 0)
+     await page.goBack()
+     await waitForFish(page)
+     await page.evaluate(() => scrollTo(0, 0))
+     await page.keyboard.press('PageDown')
+     await page.waitForFunction(() => scrollY > 100)
+-    report.results.push({ label, options, passed: true, checks: 'formation/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/route cycles' })
++    report.results.push({ label, options, passed: true, checks: 'formation/GPU bounds before release on shrink and both rotations/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/live scene ownership across route cycles' })
+     await context.close()
+   }
+   for (const mode of ['reduced-motion', 'webgl-unavailable', 'float-target-unavailable', 'shader-failure', 'context-loss']) {
+diff --git a/src/webgl/homeLayout.js b/src/webgl/homeLayout.js
+new file mode 100644
+index 0000000..568e294
+--- /dev/null
++++ b/src/webgl/homeLayout.js
+@@ -0,0 +1,11 @@
++// Keep the visit's glyph layout in simulation coordinates. Resize only its
++// presentation, so even a desktop-to-phone shrink fits on the first frame.
++export function fitNameToViewport(formationWidth, width, height, worldHeight) {
++  const worldWidth = worldHeight * width / height
++  const scale = Math.min(worldWidth * .9, 135) / formationWidth
++  return {
++    scale,
++    offsetY: worldHeight * .04 * (1 - scale),
++    simulationWidth: worldWidth / scale,
++  }
++}
+diff --git a/tests/home-layout.test.js b/tests/home-layout.test.js
+new file mode 100644
+index 0000000..3ef29aa
+--- /dev/null
++++ b/tests/home-layout.test.js
+@@ -0,0 +1,31 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { fitNameToViewport } from '../src/webgl/homeLayout.js'
++
++const worldHeight = 2 * Math.tan(25 * Math.PI / 180) * 100
++const viewports = [[1440, 900], [390, 844], [844, 390], [320, 740]]
++
++test('an existing formation fits immediately through shrinking and rotation without moving fish', () => {
++  for (const [initialWidth, initialHeight] of viewports) {
++    const formationWidth = Math.min(worldHeight * initialWidth / initialHeight * .9, 135)
++    // Enclose the entire 1200 × 500 glyph raster, including fish geometry.
++    const positions = [-1, 1].flatMap(x => [-1, 1].map(y => [
++      x * formationWidth * .48,
++      worldHeight * .04 + y * formationWidth * .22,
++    ]))
++    const original = structuredClone(positions)
++    for (const [width, height] of viewports) {
++      const fit = fitNameToViewport(formationWidth, width, height, worldHeight)
++      for (const [x, y] of positions) {
++        const screenX = x * fit.scale / (worldHeight * width / height) + .5
++        const screenY = .5 - (y * fit.scale + fit.offsetY) / worldHeight
++        assert.ok(screenX >= .05 && screenX <= .95, `horizontal clipping: ${width}×${height}`)
++        assert.ok(screenY >= .1 && screenY <= .8, `vertical clipping: ${width}×${height}`)
++      }
++      // The lane target is expressed in simulation space, then rendered at the viewport width.
++      assert.ok(Math.abs(fit.simulationWidth * fit.scale - worldHeight * width / height) < 1e-10)
++    }
++    assert.deepEqual(positions, original)
++    assert.equal(fitNameToViewport(formationWidth, initialWidth, initialHeight, worldHeight).scale, 1)
++  }
++})

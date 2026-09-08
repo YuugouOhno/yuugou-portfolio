@@ -1,0 +1,166 @@
+diff --git a/src/glsl/boids/home-velocity.frag b/src/glsl/boids/home-velocity.frag
+index 945fba8..10566b5 100644
+--- a/src/glsl/boids/home-velocity.frag
++++ b/src/glsl/boids/home-velocity.frag
+@@ -51,6 +51,11 @@ void main() {
+   float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
+   vec3 lane = vec3(side * uWorldWidth * (depth < -100.0 ? 1.15 : .6),
+     sin(uTime * .11 + vel.w * 2.1) * 36.0, depth);
++  // Reach the exposed margins before receding: a direct diagonal toward the
++  // distant lane otherwise spends many seconds hidden under mobile copy.
++  // Use current projected position so this remains continuous and resize-safe.
++  float screenSide = abs(pos.x) / (uWorldWidth * (1.0 - pos.z / 100.0));
++  lane.z = mix(pos.z, depth, smoothstep(.28, .42, screenSide));
+   flock += limit((lane - pos) * .22, 3.0);
+   flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;
+   flock -= vel.xyz * .24;
+diff --git a/src/glsl/fish/home-fish.vert b/src/glsl/fish/home-fish.vert
+index 77f450e..05a24fd 100644
+--- a/src/glsl/fish/home-fish.vert
++++ b/src/glsl/fish/home-fish.vert
+@@ -3,6 +3,7 @@ uniform float uScale;
+ uniform float uFormationScale;
+ uniform float uFormationOffsetY;
+ uniform float uLaneScaleX;
++uniform float uLaneFishScale;
+ uniform sampler2D texturePosition;
+ uniform sampler2D textureVelocity;
+ 
+@@ -35,7 +36,7 @@ void main() {
+   float phase = posData.w;
+ 
+   // Pass to fragment shader
+-  vColor = aColor;
++  vColor = aColor * 1.35;
+   vNormal = normal;
+   vVelocity = vel;
+   vPhase = phase;
+@@ -58,8 +59,8 @@ void main() {
+   pos.y += uFormationOffsetY * (1.0 - laneWeight);
+ 
+   // Keep each fish's proportions; never scale swimming depth with glyph size.
+-  float fishScale = mix(uFormationScale, min(uLaneScaleX, 1.0), laneWeight);
+-  vec3 transformed = rotationMatrix * (animated * aSize * uScale * fishScale);
++  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, laneWeight);
++  vec3 transformed = rotationMatrix * (animated * aSize * fishScale);
+ 
+   // Apply world position
+   transformed += pos;
+diff --git a/src/webgl/FishMesh.js b/src/webgl/FishMesh.js
+index 01e40d4..cb1aee3 100644
+--- a/src/webgl/FishMesh.js
++++ b/src/webgl/FishMesh.js
+@@ -114,6 +114,7 @@ export class FishMesh {
+         uFormationScale: { value: 1.0 },
+         uFormationOffsetY: { value: 0.0 },
+         uLaneScaleX: { value: 1.0 },
++        uLaneFishScale: { value: 1.0 },
+         texturePosition: { value: null },
+         textureVelocity: { value: null },
+       },
+@@ -132,10 +133,11 @@ export class FishMesh {
+     this.material.uniforms.uScale.value = scale
+   }
+ 
+-  setViewport({ scale, offsetY, laneScaleX }) {
++  setViewport({ scale, offsetY, laneScaleX, laneFishScale }) {
+     this.material.uniforms.uFormationScale.value = scale
+     this.material.uniforms.uFormationOffsetY.value = offsetY
+     this.material.uniforms.uLaneScaleX.value = laneScaleX
++    this.material.uniforms.uLaneFishScale.value = laneFishScale
+   }
+ 
+   update(elapsed) {
+diff --git a/src/webgl/homeLayout.js b/src/webgl/homeLayout.js
+index 9253e06..638c419 100644
+--- a/src/webgl/homeLayout.js
++++ b/src/webgl/homeLayout.js
+@@ -9,5 +9,8 @@ export function fitNameToViewport(formationWidth, width, height, worldHeight, in
+     // Released fish use the visit's fixed simulation width, independent of the
+     // capped glyph width. Depth and vertical range stay in camera world units.
+     laneScaleX: worldWidth / initialWorldWidth,
++    // At z=-35 the smallest broadside fish is ~3 CSS pixels long; distant
++    // fish remain ~1.6px. Letter sizing must not make phone body fish subpixel.
++    laneFishScale: worldHeight / height * 3.4,
+   }
+ }
+diff --git a/tests/home-browser.mjs b/tests/home-browser.mjs
+index a3b4baa..946de57 100644
+--- a/tests/home-browser.mjs
++++ b/tests/home-browser.mjs
+@@ -60,6 +60,38 @@ try {
+     report.screenshots.push(`${name}.png`)
+   }
+   const waitForFish = page => page.waitForSelector('.has-fish .home-ocean canvas')
++  async function assertBodyFishVisible(page, label) {
++    const rendered = await page.evaluate(() => {
++      const scene = [...window.__homeScenes][0]
++      scene.renderer.render(scene.scene, scene.camera)
++      // Read the actual rendered triangles, not simulation centers. Copy in
++      // the same task before WebGL discards the default drawing buffer.
++      const canvas = scene.renderer.domElement
++      const copy = document.createElement('canvas')
++      copy.width = canvas.width
++      copy.height = canvas.height
++      const ctx = copy.getContext('2d', { willReadFrequently: true })
++      ctx.drawImage(canvas, 0, 0)
++      const { data } = ctx.getImageData(0, 0, copy.width, copy.height)
++      const ratioX = copy.width / innerWidth
++      const ratioY = copy.height / innerHeight
++      const masks = [...document.querySelectorAll('.home-copy, .home-footer, .home-header')]
++        .map(el => el.getBoundingClientRect())
++      let visiblePixels = 0
++      for (let y = 0; y < copy.height; y++) {
++        for (let x = 0; x < copy.width; x++) {
++          const offset = (y * copy.width + x) * 4
++          if (data[offset + 3] < 128 || Math.max(data[offset], data[offset + 1], data[offset + 2]) < 55) continue
++          const cssX = x / ratioX, cssY = y / ratioY
++          if (masks.some(rect => cssX >= rect.left && cssX <= rect.right && cssY >= rect.top && cssY <= rect.bottom)) continue
++          visiblePixels++
++        }
++      }
++      return { visibleCssPixels: visiblePixels / (ratioX * ratioY), simulationSeconds: scene.elapsed }
++    })
++    report.results.push({ label, rendered })
++    assert.ok(rendered.visibleCssPixels >= 20, `${label}: body fish not visibly rendered outside opaque copy: ${JSON.stringify(rendered)}`)
++  }
+   async function readProjection(page) {
+     const bounds = await page.evaluate(() => {
+       const scene = [...window.__homeScenes][0]
+@@ -139,6 +171,10 @@ try {
+     await page.waitForFunction(() => document.querySelector('.home-ocean').dataset.blend === '1.000')
+     await page.waitForTimeout(1500)
+     await capture(page, `${label}-body`)
++    await assertBodyFishVisible(page, `${label}-body-visible-pixels`)
++    await page.waitForTimeout(30000)
++    await capture(page, `${label}-body-after-30s`)
++    await assertBodyFishVisible(page, `${label}-body-after-30s-visible-pixels`)
+     await page.evaluate(() => scrollTo(0, 0))
+     await page.waitForTimeout(100)
+     assert.equal(await page.locator('.home-ocean').getAttribute('data-release'), 'released')
+diff --git a/tests/home-layout.test.js b/tests/home-layout.test.js
+index caa17e8..9a193fe 100644
+--- a/tests/home-layout.test.js
++++ b/tests/home-layout.test.js
+@@ -6,6 +6,21 @@ import { fitNameToViewport } from '../src/webgl/homeLayout.js'
+ const worldHeight = 2 * Math.tan(25 * Math.PI / 180) * 100
+ const viewports = [[1440, 900], [390, 844], [844, 390], [320, 740]]
+ 
++test('body fish retain a discernible projected size regardless of the initial name width', () => {
++  for (const [initialWidth, initialHeight] of viewports) {
++    const initialWorldWidth = worldHeight * initialWidth / initialHeight
++    for (const [width, height] of viewports) {
++      const fit = fitNameToViewport(Math.min(initialWorldWidth * .9, 135), width, height, worldHeight, initialWorldWidth)
++      // Smallest 1.5-unit cone, viewed broadside. Actual orientation/occlusion
++      // additionally need rendered-pixel checks and screenshot inspection.
++      const nearPixels = 1.5 * .8 * fit.laneFishScale * height / (worldHeight * 1.35)
++      const farPixels = nearPixels * 1.35 / 2.6
++      assert.ok(nearPixels >= 3 && nearPixels <= 4, `near fish too small/large: ${nearPixels}`)
++      assert.ok(farPixels >= 1.5 && farPixels <= 2.1, `far fish too small/large: ${farPixels}`)
++    }
++  }
++})
++
+ test('an existing formation fits immediately through shrinking and rotation without moving fish', () => {
+   for (const [initialWidth, initialHeight] of viewports) {
+     const formationWidth = Math.min(worldHeight * initialWidth / initialHeight * .9, 135)

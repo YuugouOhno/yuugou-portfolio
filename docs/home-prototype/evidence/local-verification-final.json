@@ -1,0 +1,29 @@
+{
+  "candidate": 3,
+  "executedAt": "2026-09-08T06:18:38.098566+00:00",
+  "results": [
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "log": "unit-tests-final.txt"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "build-final.txt"
+    },
+    {
+      "command": "node --check tests/home-browser.mjs",
+      "exitCode": 0,
+      "log": "browser-syntax-final.txt"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "log": "diff-check-final.txt"
+    }
+  ],
+  "notes": [
+    "First diff-check detected a whitespace-only context line inside generated prototype.diff; normalized evidence line endings and reran successfully. Application source unchanged."
+  ]
+}

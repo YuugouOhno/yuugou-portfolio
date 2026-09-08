@@ -1,0 +1,93 @@
+{
+  "environment": {
+    "platform": "darwin",
+    "node": "v26.0.0",
+    "date": "2026-09-08T06:05:37.232Z",
+    "base": "http://127.0.0.1:5180",
+    "browser": "152.0.7977.82",
+    "mode": "headless desktop browser; mobile viewport/touch emulation, not physical devices"
+  },
+  "plannedViewports": [
+    [
+      "desktop",
+      {
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1
+      }
+    ],
+    [
+      "mobile-emulated",
+      {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "deviceScaleFactor": 3,
+        "isMobile": true,
+        "hasTouch": true
+      }
+    ]
+  ],
+  "physicalDevicesVerified": false,
+  "screenshots": [
+    "desktop-formation.png",
+    "desktop-forming-resize-390x844.png",
+    "desktop-forming-resize-844x390.png",
+    "desktop-forming-resize-320x740.png",
+    "desktop-forming-resize-1440x900.png",
+    "desktop-loosening.png",
+    "desktop-body.png",
+    "desktop-body-after-30s.png",
+    "desktop-returned-released.png",
+    "desktop-paused-resized.png",
+    "desktop-deep-reload.png",
+    "mobile-emulated-formation.png",
+    "mobile-emulated-forming-resize-390x844.png",
+    "mobile-emulated-forming-resize-844x390.png",
+    "mobile-emulated-forming-resize-320x740.png",
+    "mobile-emulated-forming-resize-1440x900.png",
+    "mobile-emulated-loosening.png",
+    "mobile-emulated-body.png"
+  ],
+  "results": [
+    {
+      "label": "desktop-body-visible-pixels",
+      "rendered": {
+        "visibleCssPixels": 4247,
+        "simulationSeconds": 5.174699999999989
+      }
+    },
+    {
+      "label": "desktop-body-after-30s-visible-pixels",
+      "rendered": {
+        "visibleCssPixels": 1384,
+        "simulationSeconds": 35.21059999999928
+      }
+    },
+    {
+      "label": "desktop",
+      "options": {
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "deviceScaleFactor": 1
+      },
+      "passed": true,
+      "checks": "formation/GPU bounds before release on shrink and both rotations/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/live scene ownership across route cycles"
+    },
+    {
+      "label": "mobile-emulated-body-visible-pixels",
+      "rendered": {
+        "visibleCssPixels": 3.111111111111111,
+        "simulationSeconds": 5.524566666666657
+      }
+    }
+  ],
+  "status": "failed or blocked",
+  "stage": "browser-checks",
+  "error": "mobile-emulated-body-visible-pixels: body fish not visibly rendered outside opaque copy: {\"visibleCssPixels\":3.111111111111111,\"simulationSeconds\":5.524566666666657}"
+}

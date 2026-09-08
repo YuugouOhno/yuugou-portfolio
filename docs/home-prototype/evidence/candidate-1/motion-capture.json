@@ -1,0 +1,31 @@
+{
+  "date": "2026-09-08T06:10:06.567Z",
+  "browser": "152.0.7977.82",
+  "base": "http://127.0.0.1:5180",
+  "records": [
+    {
+      "label": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "mobileEmulation": false,
+      "passed": true,
+      "video": "desktop-motion.webm",
+      "checks": "gradual scroll, body settling, return without regrouping, page errors, horizontal overflow",
+      "note": "Real headless Chrome recording with programmatic gradual scroll; physical devices untested; existing remote third-party script blocked."
+    },
+    {
+      "label": "mobile-emulated",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "mobileEmulation": true,
+      "passed": true,
+      "video": "mobile-emulated-motion.webm",
+      "checks": "gradual scroll, body settling, return without regrouping, page errors, horizontal overflow",
+      "note": "Real headless Chrome recording with programmatic gradual scroll; physical devices untested; existing remote third-party script blocked."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "iteration": 3,
+  "candidatePath": "/private/tmp/yuugou-task1-review/candidate-3",
+  "requestedAt": "2026-09-08T06:18:11.139565+00:00",
+  "summary": "Candidate-2 browser suite passes but worker and independent visual reviewer find immediate mobile body only 6-7 flecks/26.67px too marginal. Candidate-3 preserves ALL browser assertions and CSS: delays depth until actual mobile copy edge screenSide=.43 (to .455); gives lateral steering independent budget so z=-160 target does not swallow horizontal correction; all acceleration/speed caps unchanged. Also aligns deep-init side with target.x to avoid unnecessary crossing. Please run full browser suite and gradual motion capture on candidate-3, inspect mobile body arrival/+30s; return result-3.json and source/environment verification. Please preserve candidate-2 result as intermediate; final evidence should be candidate-3.",
+  "workerStatus": {
+    "updatedAt": "2026-09-08T06:47:25.861295+00:00",
+    "status": "source-frozen-awaiting-manager-result",
+    "source": "candidate-3 and worktree application/test/config/public sources remain byte-identical (66 files)",
+    "request": "Run the immutable candidate-3 full browser suite and gradual motion capture; return result-3.json. Candidate-2 passed numerically but its independent visual review required additional immediate-body visibility fixes, implemented in candidate-3. Final visual acceptance is not claimed. Please report concrete manager execution status if blocked.",
+    "humanReviewReady": false
+  }
+}

@@ -1,0 +1,2201 @@
+diff --git a/package.json b/package.json
+index d5be002..a249084 100644
+--- a/package.json
++++ b/package.json
+@@ -5,6 +5,7 @@
+   "type": "module",
+   "scripts": {
+     "dev": "vite",
++    "test": "node --test tests/*.test.js",
+     "build": "vite build",
+     "preview": "vite preview"
+   },
+diff --git a/src/glsl/boids/home-position.frag b/src/glsl/boids/home-position.frag
+new file mode 100644
+index 0000000..e0d85d2
+--- /dev/null
++++ b/src/glsl/boids/home-position.frag
+@@ -0,0 +1,8 @@
++uniform float uDelta;
++void main() {
++  vec2 uv = gl_FragCoord.xy / resolution.xy;
++  vec4 pos = texture2D(texturePosition, uv);
++  pos.xyz += texture2D(textureVelocity, uv).xyz * uDelta;
++  pos.w = mod(pos.w + uDelta * 2.0, 6.283185);
++  gl_FragColor = pos;
++}
+diff --git a/src/glsl/boids/home-velocity.frag b/src/glsl/boids/home-velocity.frag
+new file mode 100644
+index 0000000..42b2cd1
+--- /dev/null
++++ b/src/glsl/boids/home-velocity.frag
+@@ -0,0 +1,76 @@
++uniform float uDelta;
++uniform float uTime;
++uniform float uRelease;
++uniform float uWorldWidth;
++uniform sampler2D uTargets;
++
++vec3 limit(vec3 v, float maximum) {
++  return v * min(1.0, maximum / max(length(v), .0001));
++}
++
++void main() {
++  vec2 uv = gl_FragCoord.xy / resolution.xy;
++  vec3 pos = texture2D(texturePosition, uv).xyz;
++  vec4 vel = texture2D(textureVelocity, uv);
++  vec4 target = texture2D(uTargets, uv);
++  float index = floor(gl_FragCoord.y) * resolution.x + floor(gl_FragCoord.x);
++  float phase = target.w;
++  vec3 drift = vec3(sin(uTime * .7 + phase), cos(uTime * .6 + phase), 0.0) * .055;
++  vec3 hold = (target.xyz + drift - pos) * 5.0 - vel.xyz * 4.0;
++
++  vec3 separation = vec3(0.0);
++  vec3 alignment = vec3(0.0);
++  vec3 cohesion = vec3(0.0);
++  float nearby = 0.0;
++  // Retain the existing separation/alignment/cohesion model. 1024 fish, with
++  // 64 distributed neighbors per frame instead of the previous 4096^2 scan.
++  if (uRelease > .001) {
++    for (float j = 0.0; j < 64.0; j++) {
++      float sampleIndex = mod(index + j * 17.0 + floor(uTime * 8.0) * 13.0, 1024.0);
++      vec2 ref = (vec2(mod(sampleIndex, resolution.x), floor(sampleIndex / resolution.x)) + .5) / resolution.xy;
++      vec4 otherVel = texture2D(textureVelocity, ref);
++      vec3 other = texture2D(texturePosition, ref).xyz;
++      vec3 diff = pos - other;
++      float dist = length(diff);
++      if (dist > .001 && dist < 2.0) separation += diff / max(dist * dist, .1);
++      if (dist > .001 && dist < 12.0 && otherVel.w == vel.w) {
++        alignment += otherVel.xyz;
++        cohesion += other;
++        nearby += 1.0;
++      }
++    }
++  }
++  vec3 flock = limit(separation, 2.0) * 1.5;
++  if (nearby > 0.0) {
++    flock += limit(alignment / nearby - vel.xyz, 1.0);
++    flock += limit(cohesion / nearby - pos, 1.0) * .6;
++  }
++  // Swim in side lanes, with 80% of the fish farther away. The opaque reading
++  // surface additionally keeps links/text clear while fish travel into the lanes.
++  // Leave through the closest margin instead of sending half the name across
++  // the opaque copy. The assignment stays fixed for the whole visit.
++  float side = target.x < 0.0 ? -1.0 : 1.0;
++  float depth = mod(index, 5.0) < 1.0 ? -35.0 : -160.0;
++  // Follow a perspective-correct corridor at the CURRENT depth. A far-away
++  // lane's final x coordinate points offscreen while the fish is still near.
++  float laneX = side * uWorldWidth * .455 * (1.0 - pos.z / 100.0);
++  // Reach the exposed margins before receding: a direct diagonal toward the
++  // distant lane otherwise spends many seconds hidden under mobile copy.
++  // Use current projected position so this remains continuous and resize-safe.
++  float screenSide = abs(pos.x) / (uWorldWidth * (1.0 - pos.z / 100.0));
++  // Mobile copy ends at |screenSide|=.43. Start receding only after emerging.
++  float inMargin = smoothstep(.43, .455, screenSide);
++  // Give lateral steering its own budget: normalizing a vector toward z=-160
++  // otherwise reduces its small x correction almost to zero, pulling the fish
++  // back under the copy as perspective shrinks its projected x coordinate.
++  flock += vec3(clamp((laneX - pos.x) * 1.2, -3.0, 3.0),
++    clamp((sin(uTime * .11 + vel.w * 2.1) * 36.0 - pos.y) * .22, -1.4, 1.4) * inMargin,
++    clamp((depth - pos.z) * .22, -1.4, 1.4) * inMargin);
++  flock += vec3(sin(phase + uTime * .3), cos(phase + uTime * .2), sin(uTime * .2 + phase)) * .3;
++  flock -= vel.xyz * .24;
++  // Blend forces, never positions. Acceleration and speed are bounded even for
++  // anchor jumps, resize, and a resumed background tab. No minimum-speed snap.
++  vec3 acceleration = limit(mix(hold, flock, uRelease), 6.0);
++  vec3 velocity = limit(vel.xyz + acceleration * uDelta, 6.0);
++  gl_FragColor = vec4(velocity, vel.w);
++}
+diff --git a/src/glsl/fish/home-fish.vert b/src/glsl/fish/home-fish.vert
+new file mode 100644
+index 0000000..407a631
+--- /dev/null
++++ b/src/glsl/fish/home-fish.vert
+@@ -0,0 +1,76 @@
++uniform float uTime;
++uniform float uScale;
++uniform float uFormationScale;
++uniform float uFormationOffsetY;
++uniform float uLaneScaleX;
++uniform float uLaneFishScale;
++uniform sampler2D texturePosition;
++uniform sampler2D textureVelocity;
++uniform sampler2D uTargets;
++
++attribute vec2 aReference;
++attribute vec3 aColor;
++attribute float aSize;
++attribute float aSeed;
++
++varying vec3 vColor;
++varying vec3 vNormal;
++varying vec3 vVelocity;
++varying float vPhase;
++
++// Rotation matrix to align with velocity direction
++mat3 lookAtMatrix(vec3 forward, vec3 up) {
++  vec3 f = normalize(forward);
++  vec3 safeUp = abs(dot(up, f)) > 0.99 ? vec3(1.0, 0.0, 0.0) : up;
++  vec3 r = normalize(cross(safeUp, f));
++  vec3 u = cross(f, r);
++  return mat3(r, u, f);
++}
++
++void main() {
++  // Sample GPGPU textures
++  vec4 posData = texture2D(texturePosition, aReference);
++  vec4 velData = texture2D(textureVelocity, aReference);
++
++  vec3 pos = posData.xyz;
++  // Size follows physical departure from the glyph, including lateral travel.
++  // Waiting for z=-35 left moving phone fish almost subpixel in the margins.
++  float departure = smoothstep(0.0, 6.0, distance(pos, texture2D(uTargets, aReference).xyz));
++  vec3 vel = velData.xyz;
++  float phase = posData.w;
++
++  // Pass to fragment shader
++  vColor = aColor * 1.35;
++  vNormal = normal;
++  vVelocity = vel;
++  vPhase = phase;
++
++  // Create rotation matrix to face velocity direction
++  vec3 direction = length(vel) > 0.001 ? normalize(vel) : vec3(1.0, 0.0, 0.0);
++  mat3 rotationMatrix = lookAtMatrix(direction, vec3(0.0, 1.0, 0.0));
++
++  // Apply swimming animation (tail wiggle)
++  vec3 animated = position;
++  float tailFactor = max(0.0, position.z + 0.5); // More movement at tail
++  animated.x += sin(phase + aSeed * 6.28) * tailFactor * 0.2;
++
++  // Fit the name at z=0; keep swimming lanes at a fixed screen fraction and
++  // fixed depth. Blend by actual depth, not scroll, so an anchor jump cannot
++  // move fish instantly. Resizing never changes GPU positions or velocities.
++  float laneWeight = smoothstep(0.0, 35.0, -pos.z);
++  vec2 viewportScale = mix(vec2(uFormationScale), vec2(uLaneScaleX, 1.0), laneWeight);
++  pos.xy *= viewportScale;
++  pos.y += uFormationOffsetY * (1.0 - laneWeight);
++
++  // Keep each fish's proportions; never scale swimming depth with glyph size.
++  float fishScale = mix(uScale * uFormationScale, uLaneFishScale, departure);
++  vec3 transformed = rotationMatrix * (animated * aSize * fishScale);
++
++  // Apply world position
++  transformed += pos;
++
++  // Transform normal
++  vNormal = rotationMatrix * normal;
++
++  gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
++}
+diff --git a/src/pages/Home.css b/src/pages/Home.css
+new file mode 100644
+index 0000000..6e614f1
+--- /dev/null
++++ b/src/pages/Home.css
+@@ -0,0 +1,35 @@
++html.home-active, .home-active body { overflow: visible; background: #0a0a1a; }
++.home-page { color: #eeedf5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; isolation: isolate; }
++.home-page a { color: inherit; text-underline-offset: .3em; }
++.home-page a:hover { color: #d5b9f0; }
++.home-page :focus-visible { outline: 2px solid #d5b9f0; outline-offset: 6px; }
++.home-ocean { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
++.home-ocean canvas { width: 100%; height: 100%; pointer-events: none; }
++.home-header { position: absolute; top: 0; inset-inline: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 20px; padding: 28px 5vw; z-index: 2; }
++.home-header > a { text-decoration: none; font-weight: 600; }
++.home-header nav { margin-left: auto; font-size: 14px; }
++.motion-toggle { background: #0a0a1a; border: 1px solid #70667e; padding: 8px 12px; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
++.home-hero { position: relative; min-height: 100svh; height: 100svh; display: block; padding: 0; }
++.home-intro { position: absolute; top: 40%; width: 100%; text-align: center; padding: 0 5vw; }
++.home-intro h1 { font-size: clamp(30px, 7.8vw, 112px); line-height: 1.2; overflow-wrap: anywhere; }
++.home-intro p { margin-top: 24px; font-size: 17px; letter-spacing: .18em; }
++.has-fish:not(.fish-paused) .home-intro { top: 66%; }
++.has-fish:not(.fish-paused) .home-intro h1 { font-size: 17px; font-weight: 500; letter-spacing: .08em; }
++.has-fish:not(.fish-paused) .home-intro p { margin-top: 10px; font-size: 14px; }
++.home-scroll { position: absolute; bottom: 7%; left: 5vw; font-size: 14px; }
++.home-scroll span { margin-left: 24px; }
++.home-profile { min-height: 95svh; display: flex; align-items: center; justify-content: center; padding: 100px 8vw; scroll-margin-top: 20px; }
++.home-copy { width: min(100%, 660px); background: #0a0a1a; padding: 48px clamp(20px, 4vw, 56px); }
++.home-label { font-size: 13px; color: #c0accf; margin-bottom: 24px; }
++.home-copy h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 500; margin-bottom: 28px; }
++.home-copy p:not(.home-label) { line-height: 2; margin-top: 20px; font-size: 16px; }
++.home-links { display: flex; align-items: flex-start; flex-direction: column; gap: 22px; margin-top: 40px; font-size: 14px; }
++.home-footer { display: flex; justify-content: space-between; gap: 24px; padding: 32px 5vw; background: #0a0a1a; font-size: 13px; }
++@media (max-width: 699px) {
++  .home-header { gap: 16px; padding-top: 24px; }
++  .motion-toggle { margin-left: auto; }
++  .home-profile { padding: 64px 7vw; }
++  .home-copy { padding: 32px 16px; }
++}
++
++.fish-paused .home-ocean { visibility: hidden; }
+diff --git a/src/pages/Home.js b/src/pages/Home.js
+index 3050bb1..a71a800 100644
+--- a/src/pages/Home.js
++++ b/src/pages/Home.js
+@@ -1,34 +1,113 @@
+-import { Scene } from '../webgl/Scene.js'
+-import { App } from '../components/App.js'
+-
+-let scene = null
++// Preserve the pre-existing global section styling used by ForLLM.
++import '../components/App.css'
++import './Home.css'
++import { Router } from '../router/Router.js'
+
+ export function homePage() {
+-  const appContainer = document.getElementById('app')
+-  appContainer.innerHTML = ''
+-
+-  // Initialize WebGL Boids simulation
+-  scene = new Scene()
+-  scene.init()
++  const app = document.getElementById('app')
++  document.documentElement.classList.add('home-active')
++  app.innerHTML = `
++    <div class="home-page">
++      <div class="home-ocean" aria-hidden="true"></div>
++      <header class="home-header">
++        <a href="#home" aria-label="ページの先頭へ">YuugouOhno</a>
++        <nav aria-label="メインナビゲーション"><a href="#profile">プロフィール</a></nav>
++        <button type="button" class="motion-toggle" aria-pressed="false" hidden>魚の動きを止める</button>
++      </header>
++      <main>
++        <section id="home" class="home-hero" aria-labelledby="home-name">
++          <div class="home-intro">
++            <h1 id="home-name">YuugouOhno</h1>
++            <p>大野優剛</p>
++          </div>
++          <a class="home-scroll" href="#profile">プロフィールへ <span aria-hidden="true">↓</span></a>
++        </section>
++        <section id="profile" class="home-profile" aria-labelledby="profile-title" tabindex="-1">
++          <div class="home-copy">
++            <p class="home-label">Profile</p>
++            <h2 id="profile-title">大野優剛</h2>
++            <p>ソフトウェアエンジニア。</p>
++            <p>このページは、名前を形作る魚たちと、ゆっくり読み進められるプロフィールの試作です。詳しい紹介は、これから整えていきます。</p>
++            <div class="home-links">
++              <a href="https://x.com/YuugouOhno" target="_blank" rel="noopener noreferrer">X / YuugouOhno ↗</a>
++              <a href="/forllm" data-route>AI向けの構造化情報</a>
++              <a href="/ar" data-route>ARを開く</a>
++            </div>
++          </div>
++        </section>
++      </main>
++      <footer class="home-footer"><span>YuugouOhno</span><a href="#home">先頭へ ↑</a></footer>
++    </div>`
+
+-  // Mount page content
+-  appContainer.appendChild(App())
+-
+-  // Wheel scroll → camera orbit (skip if over control UI)
+-  const onWheel = (e) => {
+-    if (e.target.closest('#control-container')) return
+-    e.preventDefault()
+-    scene.orbit(e.deltaX, e.deltaY)
++  const page = app.querySelector('.home-page')
++  const container = page.querySelector('.home-ocean')
++  const hero = page.querySelector('.home-hero')
++  const toggle = page.querySelector('.motion-toggle')
++  const media = window.matchMedia('(prefers-reduced-motion: reduce)')
++  let scene = null
++  let disposed = false
++  let generation = 0
++  let firstFrame = 0
++  let secondFrame = 0
++  // Preserve the release latch across motion preference changes within this visit.
++  const visit = { released: false }
++  const stop = () => {
++    generation++
++    cancelAnimationFrame(firstFrame)
++    cancelAnimationFrame(secondFrame)
++    scene?.dispose()
++    scene = null
++    page.classList.remove('has-fish', 'fish-paused')
++    toggle.hidden = true
+   }
+-  window.addEventListener('wheel', onWheel, { passive: false })
+-
+-  // Return cleanup function
++  const start = () => {
++    stop()
++    if (disposed || media.matches) return
++    const request = generation
++    // Let ordinary HTML paint before loading and compiling the optional scene.
++    firstFrame = requestAnimationFrame(() => {
++      secondFrame = requestAnimationFrame(async () => {
++        try {
++          const { Scene } = await import('../webgl/Scene.js')
++          if (disposed || request !== generation) return
++          scene = new Scene(container, hero, visit, stop)
++          scene.init()
++          page.classList.add('has-fish')
++          toggle.hidden = false
++          toggle.setAttribute('aria-pressed', 'false')
++          toggle.textContent = '魚の動きを止める'
++        } catch (error) {
++          if (request !== generation) return
++          stop()
++          console.warn('Home fish unavailable; HTML remains available.', error)
++        }
++      })
++    })
++  }
++  const onToggle = () => {
++    if (!scene) return
++    const paused = scene.setPaused(!scene.paused)
++    page.classList.toggle('fish-paused', paused)
++    toggle.setAttribute('aria-pressed', String(paused))
++    toggle.textContent = paused ? '魚の動きを再開する' : '魚の動きを止める'
++  }
++  const onClick = (event) => {
++    const link = event.target.closest('a[data-route]')
++    if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
++    event.preventDefault()
++    Router.getInstance().navigate(link.getAttribute('href'))
++  }
++  page.addEventListener('click', onClick)
++  toggle.addEventListener('click', onToggle)
++  media.addEventListener('change', start)
++  start()
+   return () => {
+-    window.removeEventListener('wheel', onWheel)
+-    if (scene) {
+-      scene.dispose()
+-      scene = null
+-    }
+-    appContainer.innerHTML = ''
++    disposed = true
++    stop()
++    media.removeEventListener('change', start)
++    page.removeEventListener('click', onClick)
++    toggle.removeEventListener('click', onToggle)
++    document.documentElement.classList.remove('home-active')
++    page.remove()
+   }
+ }
+diff --git a/src/webgl/FishMesh.js b/src/webgl/FishMesh.js
+index ed2f1ab..2aa7a93 100644
+--- a/src/webgl/FishMesh.js
++++ b/src/webgl/FishMesh.js
+@@ -1,7 +1,7 @@
+ import * as THREE from 'three'
+
+ // Shader imports
+-import fishVertex from '../glsl/fish/fish.vert?raw'
++import fishVertex from '../glsl/fish/home-fish.vert?raw'
+ import fishFragment from '../glsl/fish/fish.frag?raw'
+
+ export class FishMesh {
+@@ -24,9 +24,9 @@ export class FishMesh {
+
+     // Group colors - purple spectrum (for normal fish groups 0-2)
+     const groupColors = [
+-      new THREE.Color().setHSL(0.92, 0.8, 0.55), // Red-Purple (Magenta)
+-      new THREE.Color().setHSL(0.83, 0.8, 0.55), // Purple
+-      new THREE.Color().setHSL(0.72, 0.8, 0.55), // Blue-Purple (Violet)
++      new THREE.Color().setHSL(0.92, 0.4, 0.75), // Red-Purple (Magenta)
++      new THREE.Color().setHSL(0.83, 0.4, 0.75), // Purple
++      new THREE.Color().setHSL(0.72, 0.4, 0.75), // Blue-Purple (Violet)
+     ]
+
+     // Base geometry (simple cone/pyramid for fish shape)
+@@ -38,6 +38,7 @@ export class FishMesh {
+     geometry.index = baseGeometry.index
+     geometry.attributes.position = baseGeometry.attributes.position
+     geometry.attributes.normal = baseGeometry.attributes.normal
++    baseGeometry.dispose()
+
+     // Instance attributes
+     const references = new Float32Array(count * 2)
+@@ -48,8 +49,8 @@ export class FishMesh {
+
+     for (let i = 0; i < count; i++) {
+       // UV reference to lookup in GPGPU texture
+-      const x = (i % textureSize) / textureSize
+-      const y = Math.floor(i / textureSize) / textureSize
++      const x = ((i % textureSize) + 0.5) / textureSize
++      const y = (Math.floor(i / textureSize) + 0.5) / textureSize
+       references[i * 2 + 0] = x
+       references[i * 2 + 1] = y
+
+@@ -110,8 +111,13 @@ export class FishMesh {
+       uniforms: {
+         uTime: { value: 0.0 },
+         uScale: { value: 1.0 },
++        uFormationScale: { value: 1.0 },
++        uFormationOffsetY: { value: 0.0 },
++        uLaneScaleX: { value: 1.0 },
++        uLaneFishScale: { value: 1.0 },
+         texturePosition: { value: null },
+         textureVelocity: { value: null },
++        uTargets: { value: null },
+       },
+       side: THREE.DoubleSide,
+     })
+@@ -128,12 +134,20 @@ export class FishMesh {
+     this.material.uniforms.uScale.value = scale
+   }
+
++  setViewport({ scale, offsetY, laneScaleX, laneFishScale }) {
++    this.material.uniforms.uFormationScale.value = scale
++    this.material.uniforms.uFormationOffsetY.value = offsetY
++    this.material.uniforms.uLaneScaleX.value = laneScaleX
++    this.material.uniforms.uLaneFishScale.value = laneFishScale
++  }
++
+   update(elapsed) {
+     if (!this.material || !this.gpgpu) return
+
+     this.material.uniforms.uTime.value = elapsed
+     this.material.uniforms.texturePosition.value = this.gpgpu.getPositionTexture()
+     this.material.uniforms.textureVelocity.value = this.gpgpu.getVelocityTexture()
++    this.material.uniforms.uTargets.value = this.gpgpu.targetTexture
+   }
+
+   dispose() {
+diff --git a/src/webgl/GPGPUSimulation.js b/src/webgl/GPGPUSimulation.js
+index c5dca70..a200c77 100644
+--- a/src/webgl/GPGPUSimulation.js
++++ b/src/webgl/GPGPUSimulation.js
+@@ -1,174 +1,58 @@
+ import * as THREE from 'three'
+ import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js'
+-
+-// Shader imports
+-import positionFragment from '../glsl/boids/position.frag?raw'
+-import velocityFragment from '../glsl/boids/velocity.frag?raw'
++import positionFragment from '../glsl/boids/home-position.frag?raw'
++import velocityFragment from '../glsl/boids/home-velocity.frag?raw'
+
+ export class GPGPUSimulation {
+-  constructor(renderer, config, groupIds = null) {
+-    this.renderer = renderer
+-    this.config = config
+-    this.groupIds = groupIds
+-
+-    // Texture size (must be power of 2)
++  constructor(renderer, config, groupIds) {
++    Object.assign(this, { renderer, config, groupIds })
+     this.textureSize = Math.ceil(Math.sqrt(config.boidCount))
+-
+-    this.gpuCompute = null
+-
+-    // Variables
+-    this.positionVariable = null
+-    this.velocityVariable = null
+   }
+
+-  init() {
+-    this.gpuCompute = new GPUComputationRenderer(
+-      this.textureSize,
+-      this.textureSize,
+-      this.renderer
+-    )
+-
+-    // Check for WebGL 2 support
+-    if (!this.renderer.capabilities.isWebGL2) {
+-      console.error('WebGL 2 is required for GPGPU simulation')
+-      return
++  init(targets, released, worldWidth) {
++    if (!this.renderer.capabilities.isWebGL2 || !this.renderer.extensions.has('EXT_color_buffer_float')) {
++      throw new Error('Home fish need WebGL 2 float render targets')
+     }
+-
+-    // Create initial textures
+-    const positionTexture = this.gpuCompute.createTexture()
+-    const velocityTexture = this.gpuCompute.createTexture()
+-
+-    // Fill textures with initial data
+-    this.fillPositionTexture(positionTexture)
+-    this.fillVelocityTexture(velocityTexture)
+-
+-    // Add variables
+-    this.positionVariable = this.gpuCompute.addVariable(
+-      'texturePosition',
+-      positionFragment,
+-      positionTexture
+-    )
+-
+-    this.velocityVariable = this.gpuCompute.addVariable(
+-      'textureVelocity',
+-      velocityFragment,
+-      velocityTexture
+-    )
+-
+-    // Set dependencies
+-    this.gpuCompute.setVariableDependencies(this.positionVariable, [
+-      this.positionVariable,
+-      this.velocityVariable,
+-    ])
+-
+-    this.gpuCompute.setVariableDependencies(this.velocityVariable, [
+-      this.positionVariable,
+-      this.velocityVariable,
+-    ])
+-
+-    // Add uniforms
+-    this.addUniforms(this.positionVariable)
+-    this.addUniforms(this.velocityVariable)
+-
+-    // Initialize
+-    const error = this.gpuCompute.init()
+-    if (error !== null) {
+-      console.error('GPUComputationRenderer error:', error)
++    this.gpuCompute = new GPUComputationRenderer(this.textureSize, this.textureSize, this.renderer)
++    this.targetTexture = this.gpuCompute.createTexture()
++    this.targetTexture.image.data.set(targets)
++    this.targetTexture.needsUpdate = true
++    const positions = this.gpuCompute.createTexture()
++    const velocities = this.gpuCompute.createTexture()
++    positions.image.data.set(targets)
++    for (let i = 0; i < targets.length / 4; i++) {
++      const offset = i * 4
++      velocities.image.data[offset] = .01
++      velocities.image.data[offset + 3] = this.groupIds[i]
++      if (released >= 1) {
++        const side = targets[offset] < 0 ? -1 : 1
++        // Same near/far lanes as the steering shader, inside the view even on
++        // a deep restore. Their simulation coordinates survive every resize.
++        positions.image.data[offset] = side * worldWidth * (i % 5 ? 1.15 : .6)
++        positions.image.data[offset + 1] = ((i * .618) % 1 - .5) * 72
++        positions.image.data[offset + 2] = i % 5 ? -160 : -35
++      }
+     }
+-  }
+-
+-  fillPositionTexture(texture) {
+-    const data = texture.image.data
+-
+-    // Start in a tight cluster (10% of bounds) for dramatic spread effect
+-    const spawnRadius = 8
+-
+-    for (let i = 0; i < data.length; i += 4) {
+-      // Random position in small sphere at center
+-      const theta = Math.random() * Math.PI * 2
+-      const phi = Math.acos(2 * Math.random() - 1)
+-      const r = Math.random() * spawnRadius
+-
+-      data[i + 0] = r * Math.sin(phi) * Math.cos(theta) // x
+-      data[i + 1] = r * Math.sin(phi) * Math.sin(theta) // y
+-      data[i + 2] = r * Math.cos(phi) // z
+-      data[i + 3] = Math.random() * Math.PI * 2 // animation phase
++    this.positionVariable = this.gpuCompute.addVariable('texturePosition', positionFragment, positions)
++    this.velocityVariable = this.gpuCompute.addVariable('textureVelocity', velocityFragment, velocities)
++    for (const variable of [this.positionVariable, this.velocityVariable]) {
++      this.gpuCompute.setVariableDependencies(variable, [this.positionVariable, this.velocityVariable])
++      Object.assign(variable.material.uniforms, {
++        uDelta: { value: 0 }, uTime: { value: 0 }, uRelease: { value: released },
++        uTargets: { value: this.targetTexture }, uWorldWidth: { value: worldWidth },
++      })
+     }
++    const error = this.gpuCompute.init()
++    if (error) throw new Error(error)
+   }
+
+-  fillVelocityTexture(texture) {
+-    const data = texture.image.data
+-    const groupCount = this.config.groupCount || 3
+-
+-    for (let i = 0; i < data.length; i += 4) {
+-      const boidIndex = i / 4
+-
+-      // Random initial velocity
+-      data[i + 0] = (Math.random() - 0.5) * 2 // vx
+-      data[i + 1] = (Math.random() - 0.5) * 2 // vy
+-      data[i + 2] = (Math.random() - 0.5) * 2 // vz
+-
+-      // Use shared group IDs if available, otherwise random
+-      if (this.groupIds && boidIndex < this.groupIds.length) {
+-        data[i + 3] = this.groupIds[boidIndex]
+-      } else {
+-        data[i + 3] = Math.floor(Math.random() * groupCount)
+-      }
++  update(delta, elapsed, release) {
++    for (const variable of [this.positionVariable, this.velocityVariable]) {
++      const uniforms = variable.material.uniforms
++      uniforms.uDelta.value = delta
++      uniforms.uTime.value = elapsed
++      uniforms.uRelease.value = release
+     }
+-  }
+-
+-  addUniforms(variable) {
+-    const uniforms = variable.material.uniforms
+-
+-    // Time
+-    uniforms.uTime = { value: 0.0 }
+-    uniforms.uDelta = { value: 0.0 }
+-
+-    // Sphere boundary
+-    uniforms.uSphereRadius = { value: this.config.sphereRadius }
+-
+-    // Boids parameters
+-    uniforms.uSeparationDistance = { value: 5.0 }
+-    uniforms.uAlignmentDistance = { value: 10.0 }
+-    uniforms.uCohesionDistance = { value: 15.0 }
+-
+-    uniforms.uSeparationWeight = { value: 1.5 }
+-    uniforms.uAlignmentWeight = { value: 1.0 }
+-    uniforms.uCohesionWeight = { value: 1.0 }
+-
+-    // Speed limits
+-    uniforms.uMaxSpeed = { value: 20.0 }
+-    uniforms.uMinSpeed = { value: 5.0 }
+-
+-    // Wall avoidance
+-    uniforms.uWallWeight = { value: 2.0 }
+-
+-    // Mouse interaction
+-    uniforms.uMouse = { value: new THREE.Vector3() }
+-    uniforms.uMouseRayDir = { value: new THREE.Vector3(0, 0, -1) }
+-    uniforms.uMouseWeight = { value: 0.0 }
+-    uniforms.uInteractionType = { value: 0 } // 0=none, 1=avoid, 2=attract
+-
+-    // Predator (whale) flee
+-    uniforms.uFleeDistance = { value: 30.0 }
+-    uniforms.uFleeWeight   = { value: 10.0 }
+-    uniforms.uPredatorPos  = { value: new THREE.Vector3(9999, 9999, 9999) }
+-  }
+-
+-  update(delta, elapsed) {
+-    if (!this.gpuCompute) return
+-
+-    // Update uniforms
+-    const posUniforms = this.positionVariable.material.uniforms
+-    const velUniforms = this.velocityVariable.material.uniforms
+-
+-    posUniforms.uTime.value = elapsed
+-    posUniforms.uDelta.value = delta
+-
+-    velUniforms.uTime.value = elapsed
+-    velUniforms.uDelta.value = delta
+-
+-    // Compute
+     this.gpuCompute.compute()
+   }
+
+@@ -180,76 +64,13 @@ export class GPGPUSimulation {
+     return this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture
+   }
+
+-  setPredatorPosition(pos) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uPredatorPos.value.copy(pos)
+-  }
+-
+-  setMouseInteraction(position, rayDir, type, weight) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uMouse.value.copy(position)
+-    velUniforms.uMouseRayDir.value.copy(rayDir)
+-    velUniforms.uInteractionType.value = type
+-    velUniforms.uMouseWeight.value = weight
+-  }
+-
+-  setSpeed(maxSpeed, minSpeed) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uMaxSpeed.value = maxSpeed
+-    velUniforms.uMinSpeed.value = minSpeed
+-  }
+-
+-  setSeparationDistance(dist) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uSeparationDistance.value = dist
+-  }
+-
+-  setSeparation(weight) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uSeparationWeight.value = weight
+-  }
+-
+-  setAlignmentDistance(dist) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uAlignmentDistance.value = dist
+-  }
+-
+-  setAlignment(weight) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uAlignmentWeight.value = weight
+-  }
+-
+-  setCohesionDistance(dist) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uCohesionDistance.value = dist
+-  }
+-
+-  setCohesion(weight) {
+-    const velUniforms = this.velocityVariable.material.uniforms
+-    velUniforms.uCohesionWeight.value = weight
+-  }
+-
+   dispose() {
+-    if (this.gpuCompute) {
+-      // Dispose render targets
+-      if (this.positionVariable) {
+-        const posRT = this.gpuCompute.getCurrentRenderTarget(this.positionVariable)
+-        if (posRT) posRT.dispose()
+-      }
+-      if (this.velocityVariable) {
+-        const velRT = this.gpuCompute.getCurrentRenderTarget(this.velocityVariable)
+-        if (velRT) velRT.dispose()
+-      }
+-
+-      // Dispose materials
+-      if (this.positionVariable?.material) {
+-        this.positionVariable.material.dispose()
+-      }
+-      if (this.velocityVariable?.material) {
+-        this.velocityVariable.material.dispose()
+-      }
+-
+-      this.gpuCompute = null
+-    }
++    this.targetTexture?.dispose()
++    // r152 disposes both ping-pong targets and initial textures; variable
++    // shader materials remain owned by this simulation.
++    this.positionVariable?.material.dispose()
++    this.velocityVariable?.material.dispose()
++    this.gpuCompute?.dispose()
++    this.gpuCompute = null
+   }
+ }
+diff --git a/src/webgl/Scene.js b/src/webgl/Scene.js
+index 23add2c..1c3b16f 100644
+--- a/src/webgl/Scene.js
++++ b/src/webgl/Scene.js
+@@ -1,801 +1,142 @@
+ import * as THREE from 'three'
+-import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js'
+-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+ import { GPGPUSimulation } from './GPGPUSimulation.js'
+ import { FishMesh } from './FishMesh.js'
+-import { Hero } from '../components/Hero/Hero.js'
++import { advanceRelease, easeRelease } from './homeMotion.js'
++import { createNameTargets } from './nameTargets.js'
++import { fitNameToViewport } from './homeLayout.js'
+
++// Home owns this scene; AR has its own scene, mesh and simulation.
+ export class Scene {
+-  constructor() {
+-    this.renderer = null
+-    this.scene = null
+-    this.camera = null
+-    this.clock = new THREE.Clock()
+-
+-    this.gpgpu = null
+-    this.fishMesh = null
+-
+-    // Configuration
+-    this.config = {
+-      boidCount: 4096, // Must be power of 2 (texture size = sqrt(boidCount))
+-      sphereRadius: 45,
+-      groupCount: 5,    // 0-2: normal fish, 3: density shark, 4: isolation shark
+-      sharkCount: 2,
+-    }
+-
+-    // Quaternion-based camera orbit: camera always looks at origin from radius 85.
+-    // orientation/targetOrientation encode both position and roll on the sphere.
+-    const _heroQ = this._computeLookAtQuat(new THREE.Vector3(
+-      Math.sin(Math.PI * 0.18), Math.cos(Math.PI * 0.18), 0
+-    ))
+-    this.cam = {
+-      orientation:       _heroQ.clone(),
+-      targetOrientation: _heroQ.clone(),
+-      radius:            85,
++  constructor(container, hero, visit, onFailure) {
++    Object.assign(this, { container, hero, visit, onFailure })
++    this.config = { boidCount: 1024, groupCount: 3, sharkCount: 0 }
++    this.elapsed = 0
++    this.blend = 0
++    this.paused = false
++    this.disposed = false
++    this.frame = 0
++    this.lastTime = 0
++    this.onVisibility = () => {
++      cancelAnimationFrame(this.frame)
++      this.lastTime = 0
++      if (!document.hidden && !this.paused) this.frame = requestAnimationFrame(this.animate)
++    }
++    this.onContextLost = (event) => {
++      event.preventDefault()
++      this.onFailure()
+     }
+-
+-    // Depth-based content: each item appears when accumulatedTheta ≈ depth.
+-    // loop:true items repeat every `period` radians (default 2π).
+-    this.contentItems = [
+-      { name: 'hero', depth: 0, loop: true, period: Math.PI * 2 },
+-      // { name: 'works',   depth: Math.PI * 0.8  },
+-      // { name: 'contact', depth: Math.PI * 1.6  },
+-      // { name: 'about',   depth: Math.PI * 2.4  },
+-      // { name: 'skills',  depth: Math.PI * 3.2  },
+-    ]
+-    this.accumulatedTheta = 0
+-
+-    this.cssRenderer = null
+-    this.cssScene = null
+-
+-    this.speedDownTimeout = null
+-
+-    // Mouse interaction
+-    this.mouse = new THREE.Vector2()
+-    this.mouse3D = new THREE.Vector3()
+-    this.raycaster = new THREE.Raycaster()
+-    this.interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+-
+-    // Interaction settings
+-    this.interactionMode = 2 // 0: off, 1: repel, 2: attract
+-    this.interactionStrength = 4.5
+-
+-    // Bound event handler references for correct removal
+-    this._onResize    = this.onResize.bind(this)
+-    this._onMouseMove = this.onMouseMove.bind(this)
+   }
+
+   init() {
+-    this.initRenderer()
+-    this.initScene()
+-    this.initCamera()
+-    this.initGPGPU()
+-    this.initFishMesh()
+-    this.initCSS3D()
+-    this.initWhale()
+-    this.initUI()
+-    this.addEventListeners()
+-    this.animate()
+-  }
+-
+-  initRenderer() {
+-    this.renderer = new THREE.WebGLRenderer({
+-      antialias: true,
+-      alpha: false,
+-    })
+-    this.renderer.setSize(window.innerWidth, window.innerHeight)
+-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+-    document.getElementById('app').appendChild(this.renderer.domElement)
+-  }
+-
+-  initScene() {
++    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
++    this.renderer.debug.onShaderError = () => { throw new Error('Home fish shader compilation failed') }
++    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
++    this.renderer.setClearColor(0x0a0a1a, 0)
++    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost)
++    this.container.appendChild(this.renderer.domElement)
+     this.scene = new THREE.Scene()
+-    this.scene.background = new THREE.Color(0x0a0a1a)
+-
+-    // Ambient light
+-    const ambientLight = new THREE.AmbientLight(0x404060, 0.5)
+-    this.scene.add(ambientLight)
+-
+-    // Directional light
+-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1)
+-    directionalLight.position.set(10, 20, 10)
+-    this.scene.add(directionalLight)
+-  }
+-
+-  initCamera() {
+-    this.camera = new THREE.PerspectiveCamera(
+-      60,
+-      window.innerWidth / window.innerHeight,
+-      0.1,
+-      1000
+-    )
+-    this._updateCameraPosition()
+-  }
+-
+-  // Build a lookAt quaternion: camera at normalizedPos (unit vector) looking at origin.
+-  _computeLookAtQuat(normalizedPos) {
+-    const m = new THREE.Matrix4()
+-    m.lookAt(normalizedPos, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0))
+-    return new THREE.Quaternion().setFromRotationMatrix(m)
+-  }
+-
+-  // Apply stored quaternion directly — no lookAt() needed, no singularities.
+-  _updateCameraPosition() {
+-    const { orientation, radius } = this.cam
+-    // Default position (0,0,radius) rotated by orientation = actual world position.
+-    this.camera.position.set(0, 0, radius).applyQuaternion(orientation)
+-    this.camera.quaternion.copy(orientation)
+-  }
+-
+-  initGPGPU() {
+-    // Create FishMesh first to generate group IDs
++    this.camera = new THREE.PerspectiveCamera(50, 1, .1, 600)
++    this.camera.position.z = 100
++    this.worldHeight = 2 * Math.tan(THREE.MathUtils.degToRad(25)) * 100
++    this.resize()
++    this.readProgress()
++    // Deep restored positions start already released, with fish in background lanes.
++    this.blend = this.visit.released ? 1 : this.targetBlend
+     this.fishMesh = new FishMesh(this.config, null)
+-
+-    // Pass group IDs to GPGPU
+     this.gpgpu = new GPGPUSimulation(this.renderer, this.config, this.fishMesh.groupIds)
+-    this.gpgpu.init()
+-
+-    // Now connect FishMesh to GPGPU
++    this.gpgpu.init(this.targets, this.blend, this.worldWidth)
++    // Compile both compute shaders while Home still owns the initialization catch.
++    this.gpgpu.update(0, 0, this.blend)
+     this.fishMesh.setGPGPU(this.gpgpu)
+-  }
+-
+-  initFishMesh() {
+-    // FishMesh already created in initGPGPU
++    this.fishMesh.setScale(this.fishScale)
++    this.fishMesh.setViewport(this.viewportFit)
+     this.scene.add(this.fishMesh.mesh)
+-  }
+-
+-  initWhale() {
+-    this.whaleAngle = 0
+-    this.whalePos   = new THREE.Vector3()
+-    this.whaleMesh  = null
+-    this.whaleAnimMixer = null
+-    this.whaleOrbitRadius = 40
+-
+-    const loader = new GLTFLoader()
+-    loader.load('/model/whale.glb', (gltf) => {
+-      if (this.disposed) return
+-      const whale = gltf.scene
+-      whale.scale.setScalar(1.0)
+-      this.scene.add(whale)
+-      this.whaleMesh = whale
+-
+-      if (gltf.animations.length > 0) {
+-        this.whaleAnimMixer = new THREE.AnimationMixer(whale)
+-        this.whaleAnimMixer.clipAction(gltf.animations[0]).play()
++    this.fishMesh.update(0)
++    this.renderer.render(this.scene, this.camera)
++    this.resizeObserver = new ResizeObserver(() => {
++      try {
++        this.resize()
++      } catch (error) {
++        console.warn('Home fish resize failed; HTML remains available.', error)
++        this.onFailure()
+       }
+     })
++    this.resizeObserver.observe(this.container)
++    document.addEventListener('visibilitychange', this.onVisibility)
++    this.frame = requestAnimationFrame(this.animate)
+   }
+
+-  initCSS3D() {
+-    this.cssRenderer = new CSS3DRenderer()
+-    this.cssRenderer.setSize(window.innerWidth, window.innerHeight)
+-    const cssEl = this.cssRenderer.domElement
+-    cssEl.style.position = 'fixed'
+-    cssEl.style.top = '0'
+-    cssEl.style.left = '0'
+-    cssEl.style.zIndex = '1'
+-    cssEl.style.pointerEvents = 'none'
+-    document.body.appendChild(cssEl)
+-
+-    this.cssScene = new THREE.Scene()
+-    this.contentObjects = []
+-    this.createContentPanels()
++  readProgress() {
++    const rect = this.hero.getBoundingClientRect()
++    const state = advanceRelease(this.visit.released, -rect.top / Math.max(1, rect.height))
++    this.visit.released = state.released
++    this.targetBlend = state.amount
++    // Inspectable state for browser verification; no global scene handle.
++    this.container.dataset.release = state.released ? 'released' : 'forming'
+   }
+
+-  createContentPanels() {
+-    const contentRadius = 50
+-    const numStrips = 20
+-    const totalVerticalArc = 0.93
+-    const visibleWindow = totalVerticalArc * 1.5
+-
+-    const panelCssWidth = 1200
+-    const fovRad = (60 * Math.PI) / 180
+-    const panelDist = this.cam.radius - contentRadius
+-    const visibleWidth = 2 * Math.tan(fovRad / 2) * panelDist * (window.innerWidth / window.innerHeight)
+-    const scale = visibleWidth / panelCssWidth
+-    const arcLenPerStrip = (contentRadius * totalVerticalArc) / numStrips
+-    const stripCssHeight = Math.round(arcLenPerStrip / scale)
+-
+-    // Precomputed per-strip angle offsets from panel center (reused for all items)
+-    const stripAlphas = Array.from({ length: numStrips }, (_, i) =>
+-      ((i + 0.5) / numStrips - 0.5) * totalVerticalArc
+-    )
+-
+-    this._panelCfg = { contentRadius, visibleWindow }
+-
+-    for (const item of this.contentItems) {
+-      if (item.name === 'hero') {
+-        const heroSection = Hero()
+-        const card = heroSection.querySelector('.hero-card')
+-        card.style.visibility = 'hidden'
+-        const heroObj = new CSS3DObject(card)
+-        heroObj.scale.setScalar(0.07)
+-        this.cssScene.add(heroObj)
+-        this.contentObjects.push({
+-          depth:      item.depth,
+-          loop:       item.loop ?? false,
+-          period:     item.period ?? Math.PI * 2,
+-          name:       item.name,
+-          elements:   [card],
+-          objects:    [heroObj],
+-          stripAlphas:[0],
+-        })
+-        continue
+-      }
+-
+-      const elements = []
+-      const objects  = []
+-
+-      for (let i = 0; i < numStrips; i++) {
+-        const el = document.createElement('div')
+-        const isMiddle = i === Math.floor(numStrips / 2)
+-        el.style.cssText = `
+-          width: ${panelCssWidth}px;
+-          height: ${stripCssHeight}px;
+-          background: rgba(10, 10, 40, 0.72);
+-          border-left:  2px solid rgba(255,255,255,0.4);
+-          border-right: 2px solid rgba(255,255,255,0.4);
+-          ${i === 0             ? 'border-top:    2px solid rgba(255,255,255,0.4);' : ''}
+-          ${i === numStrips - 1 ? 'border-bottom: 2px solid rgba(255,255,255,0.4);' : ''}
+-          color: #fff;
+-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+-          font-size: 80px;
+-          font-weight: 600;
+-          letter-spacing: 0.1em;
+-          text-transform: uppercase;
+-          display: flex;
+-          align-items: center;
+-          padding: 0 80px;
+-          box-sizing: border-box;
+-          backface-visibility: hidden;
+-          -webkit-backface-visibility: hidden;
+-          visibility: hidden;
+-        `
+-        if (isMiddle) el.textContent = item.name
+-
+-        const obj = new CSS3DObject(el)
+-        obj.scale.setScalar(scale)
+-        this.cssScene.add(obj)
+-        elements.push(el)
+-        objects.push(obj)
+-      }
+-
+-      this.contentObjects.push({
+-        depth:      item.depth,
+-        loop:       item.loop ?? false,
+-        period:     item.period ?? Math.PI * 2,
+-        name:       item.name,
+-        elements,
+-        objects,
+-        stripAlphas,
+-      })
+-    }
+-  }
+-
+-  initUI() {
+-    // Create gear button and control panel
+-    const container = document.createElement('div')
+-    container.id = 'control-container'
+-    container.innerHTML = `
+-      <button id="gear-btn">⚙</button>
+-      <div id="control-panel" class="hidden">
+-        <div class="control-header">Controls</div>
+-        <div class="control-row">
+-          <label>Speed</label>
+-          <input type="range" id="speed-slider" min="5" max="40" value="10" step="1">
+-          <span id="speed-value">10</span>
+-        </div>
+-        <div class="control-row">
+-          <label>Size</label>
+-          <input type="range" id="size-slider" min="0.5" max="3" value="1" step="0.1">
+-          <span id="size-value">1.0</span>
+-        </div>
+-        <div class="control-divider"></div>
+-        <div class="control-subheader">Boids Behavior</div>
+-        <div class="control-row">
+-          <label>Sep Dist</label>
+-          <input type="range" id="sep-dist-slider" min="1" max="15" value="5" step="0.5">
+-          <span id="sep-dist-value">5.0</span>
+-        </div>
+-        <div class="control-row">
+-          <label>Sep Weight</label>
+-          <input type="range" id="separation-slider" min="0" max="5" value="1.5" step="0.1">
+-          <span id="separation-value">1.5</span>
+-        </div>
+-        <div class="control-row">
+-          <label>Align Dist</label>
+-          <input type="range" id="align-dist-slider" min="1" max="20" value="10" step="0.5">
+-          <span id="align-dist-value">10.0</span>
+-        </div>
+-        <div class="control-row">
+-          <label>Align Weight</label>
+-          <input type="range" id="alignment-slider" min="0" max="3" value="1" step="0.1">
+-          <span id="alignment-value">1.0</span>
+-        </div>
+-        <div class="control-row">
+-          <label>Coh Dist</label>
+-          <input type="range" id="coh-dist-slider" min="1" max="30" value="15" step="0.5">
+-          <span id="coh-dist-value">15.0</span>
+-        </div>
+-        <div class="control-row">
+-          <label>Coh Weight</label>
+-          <input type="range" id="cohesion-slider" min="0" max="3" value="1" step="0.1">
+-          <span id="cohesion-value">1.0</span>
+-        </div>
+-        <div class="control-divider"></div>
+-        <div class="control-subheader">Mouse Interaction</div>
+-        <div class="control-row">
+-          <label>Mode</label>
+-          <div class="mode-buttons">
+-            <button id="mode-off" class="mode-btn">Off</button>
+-            <button id="mode-repel" class="mode-btn">Repel</button>
+-            <button id="mode-attract" class="mode-btn active">Attract</button>
+-          </div>
+-        </div>
+-        <div class="control-row">
+-          <label>Strength</label>
+-          <input type="range" id="strength-slider" min="0" max="20" value="4.5" step="0.5">
+-          <span id="strength-value">4.5</span>
+-        </div>
+-      </div>
+-    `
+-    document.body.appendChild(container)
+-
+-    // Add styles
+-    const style = document.createElement('style')
+-    style.textContent = `
+-      #control-container {
+-        position: fixed;
+-        bottom: 20px;
+-        left: 20px;
+-        z-index: 1000;
+-      }
+-      #gear-btn {
+-        width: 44px;
+-        height: 44px;
+-        border-radius: 50%;
+-        border: 1px solid rgba(255, 255, 255, 0.2);
+-        background: rgba(0, 0, 0, 0.7);
+-        color: white;
+-        font-size: 20px;
+-        cursor: pointer;
+-        backdrop-filter: blur(10px);
+-        transition: transform 0.3s, background 0.3s;
+-      }
+-      #gear-btn:hover {
+-        background: rgba(0, 0, 0, 0.9);
+-        transform: rotate(90deg);
+-      }
+-      #control-panel {
+-        position: absolute;
+-        bottom: 54px;
+-        left: 0;
+-        background: rgba(0, 0, 0, 0.7);
+-        border: 1px solid rgba(255, 255, 255, 0.2);
+-        border-radius: 8px;
+-        padding: 15px;
+-        color: white;
+-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+-        font-size: 12px;
+-        min-width: 200px;
+-        backdrop-filter: blur(10px);
+-        transition: opacity 0.3s, transform 0.3s;
+-      }
+-      #control-panel.hidden {
+-        opacity: 0;
+-        transform: translateY(10px);
+-        pointer-events: none;
+-      }
+-      .control-header {
+-        font-weight: bold;
+-        margin-bottom: 12px;
+-        font-size: 14px;
+-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+-        padding-bottom: 8px;
+-      }
+-      .control-row {
+-        display: flex;
+-        align-items: center;
+-        margin-bottom: 8px;
+-        gap: 10px;
+-      }
+-      .control-row label {
+-        width: 70px;
+-        flex-shrink: 0;
+-      }
+-      .control-row input[type="range"] {
+-        flex: 1;
+-        height: 4px;
+-        -webkit-appearance: none;
+-        background: rgba(255, 255, 255, 0.3);
+-        border-radius: 2px;
+-        cursor: pointer;
+-      }
+-      .control-row input[type="range"]::-webkit-slider-thumb {
+-        -webkit-appearance: none;
+-        width: 14px;
+-        height: 14px;
+-        background: #4a9eff;
+-        border-radius: 50%;
+-        cursor: pointer;
+-      }
+-      .control-row span {
+-        width: 30px;
+-        text-align: right;
+-      }
+-      .control-divider {
+-        height: 1px;
+-        background: rgba(255, 255, 255, 0.2);
+-        margin: 12px 0;
+-      }
+-      .control-subheader {
+-        font-weight: bold;
+-        margin-bottom: 10px;
+-        font-size: 12px;
+-        color: rgba(255, 255, 255, 0.8);
+-      }
+-      .mode-buttons {
+-        display: flex;
+-        gap: 4px;
+-        flex: 1;
+-      }
+-      .mode-btn {
+-        flex: 1;
+-        padding: 4px 8px;
+-        border: 1px solid rgba(255, 255, 255, 0.3);
+-        background: transparent;
+-        color: white;
+-        border-radius: 4px;
+-        cursor: pointer;
+-        font-size: 11px;
+-        transition: background 0.2s, border-color 0.2s;
+-      }
+-      .mode-btn:hover {
+-        background: rgba(255, 255, 255, 0.1);
+-      }
+-      .mode-btn.active {
+-        background: #4a9eff;
+-        border-color: #4a9eff;
+-      }
+-    `
+-    document.head.appendChild(style)
+-
+-    // Toggle panel visibility
+-    const gearBtn = document.getElementById('gear-btn')
+-    const panel = document.getElementById('control-panel')
+-    gearBtn.addEventListener('click', () => {
+-      panel.classList.toggle('hidden')
+-    })
+-
+-    // Bind slider events
+-    const speedSlider = document.getElementById('speed-slider')
+-    const sizeSlider = document.getElementById('size-slider')
+-    const sepDistSlider = document.getElementById('sep-dist-slider')
+-    const separationSlider = document.getElementById('separation-slider')
+-    const alignDistSlider = document.getElementById('align-dist-slider')
+-    const alignmentSlider = document.getElementById('alignment-slider')
+-    const cohDistSlider = document.getElementById('coh-dist-slider')
+-    const cohesionSlider = document.getElementById('cohesion-slider')
+-
+-    speedSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('speed-value').textContent = value
+-      this.gpgpu.setSpeed(value, value * 0.25)
+-    })
+-
+-    sizeSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('size-value').textContent = value.toFixed(1)
+-      this.fishMesh.setScale(value)
+-    })
+-
+-    sepDistSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('sep-dist-value').textContent = value.toFixed(1)
+-      this.gpgpu.setSeparationDistance(value)
+-    })
+-
+-    separationSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('separation-value').textContent = value.toFixed(1)
+-      this.gpgpu.setSeparation(value)
+-    })
+-
+-    alignDistSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('align-dist-value').textContent = value.toFixed(1)
+-      this.gpgpu.setAlignmentDistance(value)
+-    })
+-
+-    alignmentSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('alignment-value').textContent = value.toFixed(1)
+-      this.gpgpu.setAlignment(value)
+-    })
+-
+-    cohDistSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('coh-dist-value').textContent = value.toFixed(1)
+-      this.gpgpu.setCohesionDistance(value)
+-    })
+-
+-    cohesionSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('cohesion-value').textContent = value.toFixed(1)
+-      this.gpgpu.setCohesion(value)
+-    })
+-
+-    // Mode buttons
+-    const modeOff = document.getElementById('mode-off')
+-    const modeRepel = document.getElementById('mode-repel')
+-    const modeAttract = document.getElementById('mode-attract')
+-    const modeButtons = [modeOff, modeRepel, modeAttract]
+-
+-    const setActiveMode = (mode) => {
+-      this.interactionMode = mode
+-      modeButtons.forEach((btn, i) => {
+-        btn.classList.toggle('active', i === mode)
+-      })
+-    }
+-
+-    modeOff.addEventListener('click', () => setActiveMode(0))
+-    modeRepel.addEventListener('click', () => setActiveMode(1))
+-    modeAttract.addEventListener('click', () => setActiveMode(2))
+-
+-    // Strength slider
+-    const strengthSlider = document.getElementById('strength-slider')
+-    strengthSlider.addEventListener('input', (e) => {
+-      const value = parseFloat(e.target.value)
+-      document.getElementById('strength-value').textContent = value.toFixed(1)
+-      this.interactionStrength = value
+-    })
+-
+-    // Initial speed animation: start fast, then slow down
+-    this.gpgpu.setSpeed(40, 10)
+-    this.speedDownTimeout = setTimeout(() => {
+-      if (!this.disposed) this.animateSpeedDown(40, 10, 1000, speedSlider)
+-    }, 3000)
+-  }
+-
+-  animateSpeedDown(from, to, duration, slider) {
+-    const startTime = performance.now()
+-    const animate = (currentTime) => {
+-      const elapsed = currentTime - startTime
+-      const progress = Math.min(elapsed / duration, 1)
+-      // Ease out
+-      const eased = 1 - Math.pow(1 - progress, 3)
+-      const currentSpeed = from + (to - from) * eased
+-
+-      this.gpgpu.setSpeed(currentSpeed, currentSpeed * 0.25)
+-      slider.value = currentSpeed
+-      document.getElementById('speed-value').textContent = Math.round(currentSpeed)
+-
+-      if (progress < 1 && !this.disposed) {
+-        requestAnimationFrame(animate)
+-      }
+-    }
+-    requestAnimationFrame(animate)
+-  }
+-
+-  addEventListeners() {
+-    window.addEventListener('resize', this._onResize)
+-    window.addEventListener('mousemove', this._onMouseMove)
+-  }
+-
+-  onMouseMove(event) {
+-    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1
+-    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1
+-
+-    // Convert to 3D position on interaction plane
+-    this.raycaster.setFromCamera(this.mouse, this.camera)
+-    this.raycaster.ray.intersectPlane(this.interactionPlane, this.mouse3D)
+-
+-    // Apply interaction based on current mode and strength
+-    if (this.gpgpu) {
+-      if (this.interactionMode === 1) {
+-        // Repel: use ray from camera
+-        this.gpgpu.setMouseInteraction(
+-          this.camera.position,
+-          this.raycaster.ray.direction,
+-          this.interactionMode,
+-          this.interactionStrength
+-        )
+-      } else {
+-        // Attract or Off: use point on plane
+-        this.gpgpu.setMouseInteraction(
+-          this.mouse3D,
+-          this.raycaster.ray.direction,
+-          this.interactionMode,
+-          this.interactionStrength
+-        )
+-      }
+-    }
+-  }
+-
+-
+-  onResize() {
+-    const width = window.innerWidth
+-    const height = window.innerHeight
+-
++  resize() {
++    if (this.disposed) return
++    const width = Math.max(1, this.container.clientWidth)
++    const height = Math.max(1, this.container.clientHeight)
++    this.renderer.setSize(width, height)
+     this.camera.aspect = width / height
+     this.camera.updateProjectionMatrix()
+-
+-    this.renderer.setSize(width, height)
+-    if (this.cssRenderer) this.cssRenderer.setSize(width, height)
+-  }
+-
+-  // Camera-local orbit:
+-  //   vertical   → pitch around camera's local X (right)  → pole-to-pole on current meridian
+-  //   horizontal → yaw   around camera's local Y (up)     → orbit along current "equator"
+-  orbit(deltaX, deltaY) {
+-    const sensitivity = 0.003
+-    const cappedDY = Math.sign(deltaY) * Math.min(Math.abs(deltaY), 100)
+-    const cappedDX = Math.sign(deltaX) * Math.min(Math.abs(deltaX), 100)
+-
+-    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.cam.targetOrientation)
+-    const worldY   = new THREE.Vector3(0, 1, 0)
+-
+-    const vertQuat  = new THREE.Quaternion().setFromAxisAngle(camRight, cappedDY * sensitivity)
+-    const horizQuat = new THREE.Quaternion().setFromAxisAngle(worldY,   cappedDX * sensitivity)
+-
+-    this.cam.targetOrientation.premultiply(horizQuat).premultiply(vertQuat)
+-    this.accumulatedTheta += cappedDY * sensitivity
+-  }
+-
+-  animate() {
+-    if (this.disposed) return
+-
+-    this.animationFrameId = requestAnimationFrame(this.animate.bind(this))
+-
+-    const delta   = this.clock.getDelta()
+-    const elapsed = this.clock.getElapsedTime()
+-
+-    // Smooth camera slerp toward target (exponential, frame-rate independent)
+-    const lerpFactor = 1 - Math.exp(-8 * delta)
+-    this.cam.orientation.slerp(this.cam.targetOrientation, lerpFactor)
+-    this._updateCameraPosition()
+-
+-    // Update GPGPU simulation
++    if (!this.targets) {
++      // Wrapping is chosen once per visit. Reflowing target indices on resize
++      // would scatter letters while the fish swim to their new assignments.
++      this.targets = createNameTargets(this.config.boidCount, width, height, this.worldHeight)
++      this.formationWidth = Math.min(this.worldHeight * width / height * .9, 135)
++      this.worldWidth = this.worldHeight * width / height
++      this.fishScale = this.formationWidth / 270
++    }
++    this.viewportFit = fitNameToViewport(this.formationWidth, width, height, this.worldHeight, this.worldWidth)
+     if (this.gpgpu) {
+-      this.gpgpu.update(delta, elapsed)
+-    }
+-
+-    // Update fish mesh uniforms
+-    if (this.fishMesh) {
+-      this.fishMesh.update(elapsed)
+-    }
+-
+-    // Update whale circular orbit
+-    this.whaleAngle += delta * 0.35
+-    const wr = this.whaleOrbitRadius
+-    this.whalePos.set(
+-      Math.cos(this.whaleAngle) * wr,
+-      0,
+-      Math.sin(this.whaleAngle) * wr
+-    )
+-    if (this.whaleMesh) {
+-      this.whaleMesh.position.copy(this.whalePos)
+-      this.whaleMesh.lookAt(
+-        Math.cos(this.whaleAngle + 0.01) * wr,
+-        0,
+-        Math.sin(this.whaleAngle + 0.01) * wr
+-      )
++      this.fishMesh.setViewport(this.viewportFit)
++      // Apply projection and presentation together, without a simulation step
++      // or a frame showing the old formation outside the new camera bounds.
++      this.renderer.render(this.scene, this.camera)
+     }
+-    if (this.whaleAnimMixer) this.whaleAnimMixer.update(delta)
+-    if (this.gpgpu) this.gpgpu.setPredatorPosition(this.whalePos)
+-
+-    this.renderer.render(this.scene, this.camera)
+-
+-    // Place CSS3D content relative to camera forward direction based on accumulated scroll depth.
+-    if (this.contentObjects?.length) {
+-      const { contentRadius, visibleWindow } = this._panelCfg
+-
+-      const camFwd   = this.camera.position.clone().normalize()
+-      const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.cam.orientation)
+-
+-      for (const item of this.contentObjects) {
+-        let depthDiff
+-        if (item.loop) {
+-          const period = item.period ?? Math.PI * 2
+-          const phase = ((this.accumulatedTheta - item.depth) % period + period) % period
+-          // Wrap to [-period/2, period/2] so nearest occurrence is always used
+-          depthDiff = phase <= period / 2 ? -phase : period - phase
+-        } else {
+-          depthDiff = item.depth - this.accumulatedTheta
+-        }
+-        const isVisible = Math.abs(depthDiff) < visibleWindow
+-
+-        for (const el of item.elements) {
+-          el.style.visibility = isVisible ? '' : 'hidden'
+-        }
+-
+-        if (isVisible) {
+-          item.objects.forEach((obj, i) => {
+-            const angle = depthDiff + item.stripAlphas[i]
+-            const offsetQuat = new THREE.Quaternion().setFromAxisAngle(camRight, angle)
+-            const stripDir   = camFwd.clone().applyQuaternion(offsetQuat)
++  }
+
+-            obj.position.copy(stripDir.clone().multiplyScalar(contentRadius))
+-            obj.quaternion.copy(this.cam.orientation)
+-          })
+-        }
+-      }
++  animate = (time) => {
++    if (this.disposed || this.paused || document.hidden) return
++    const delta = this.lastTime ? Math.min((time - this.lastTime) / 1000, 1 / 60) : 0
++    this.lastTime = time
++    this.elapsed += delta
++    this.readProgress()
++    this.blend = easeRelease(this.blend, this.targetBlend, delta)
++    this.container.dataset.blend = this.blend.toFixed(3)
++    try {
++      this.gpgpu.update(delta, this.elapsed, this.blend)
++      this.fishMesh.update(this.elapsed)
++      this.renderer.render(this.scene, this.camera)
++      this.frame = requestAnimationFrame(this.animate)
++    } catch (error) {
++      console.warn('Home fish stopped; HTML remains available.', error)
++      this.onFailure()
+     }
++  }
+
+-    if (this.cssRenderer) this.cssRenderer.render(this.cssScene, this.camera)
++  setPaused(paused) {
++    this.paused = paused
++    this.onVisibility()
++    return paused
+   }
+
+   dispose() {
++    if (this.disposed) return
+     this.disposed = true
+-
+-    // Cancel animation frame
+-    if (this.animationFrameId) {
+-      cancelAnimationFrame(this.animationFrameId)
+-    }
+-
+-    // Cancel pending timers
+-    clearTimeout(this.speedDownTimeout)
+-
+-    // Remove event listeners (same references as registered)
+-    window.removeEventListener('resize', this._onResize)
+-    window.removeEventListener('mousemove', this._onMouseMove)
+-
+-    // Dispose GPGPU
+-    if (this.gpgpu) {
+-      this.gpgpu.dispose()
+-    }
+-
+-    // Dispose fish mesh
+-    if (this.fishMesh) {
+-      this.fishMesh.dispose()
+-    }
+-
+-    // Dispose whale
+-    if (this.whaleMesh) {
+-      this.scene.remove(this.whaleMesh)
+-      this.whaleMesh.traverse((obj) => {
+-        if (obj.geometry) obj.geometry.dispose()
+-        if (obj.material) obj.material.dispose()
+-      })
+-      this.whaleMesh = null
+-    }
+-    if (this.whaleAnimMixer) {
+-      this.whaleAnimMixer.stopAllAction()
+-      this.whaleAnimMixer = null
+-    }
+-
+-    // Dispose scene
+-    if (this.scene) {
+-      this.scene.traverse((object) => {
+-        if (object.geometry) {
+-          object.geometry.dispose()
+-        }
+-        if (object.material) {
+-          if (Array.isArray(object.material)) {
+-            object.material.forEach((material) => material.dispose())
+-          } else {
+-            object.material.dispose()
+-          }
+-        }
+-      })
+-    }
+-
+-    // Dispose CSS3D renderer
+-    if (this.cssRenderer) {
+-      this.cssRenderer.domElement.remove()
+-      this.cssRenderer = null
+-    }
+-
+-    // Dispose renderer
++    cancelAnimationFrame(this.frame)
++    this.resizeObserver?.disconnect()
++    document.removeEventListener('visibilitychange', this.onVisibility)
++    this.fishMesh?.dispose()
++    this.gpgpu?.dispose()
+     if (this.renderer) {
++      this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost)
+       this.renderer.dispose()
++      this.renderer.forceContextLoss()
+       this.renderer.domElement.remove()
+     }
+-
+-    // Remove UI
+-    const controlContainer = document.getElementById('control-container')
+-    if (controlContainer) {
+-      controlContainer.remove()
+-    }
+   }
+ }
+diff --git a/src/webgl/homeLayout.js b/src/webgl/homeLayout.js
+new file mode 100644
+index 0000000..638c419
+--- /dev/null
++++ b/src/webgl/homeLayout.js
+@@ -0,0 +1,16 @@
++// Keep the visit's glyph layout in simulation coordinates. Resize only its
++// presentation, so even a desktop-to-phone shrink fits on the first frame.
++export function fitNameToViewport(formationWidth, width, height, worldHeight, initialWorldWidth) {
++  const worldWidth = worldHeight * width / height
++  const scale = Math.min(worldWidth * .9, 135) / formationWidth
++  return {
++    scale,
++    offsetY: worldHeight * .04 * (1 - scale),
++    // Released fish use the visit's fixed simulation width, independent of the
++    // capped glyph width. Depth and vertical range stay in camera world units.
++    laneScaleX: worldWidth / initialWorldWidth,
++    // At z=-35 the smallest broadside fish is ~3 CSS pixels long; distant
++    // fish remain ~1.6px. Letter sizing must not make phone body fish subpixel.
++    laneFishScale: worldHeight / height * 3.4,
++  }
++}
+diff --git a/src/webgl/homeMotion.js b/src/webgl/homeMotion.js
+new file mode 100644
+index 0000000..129ec54
+--- /dev/null
++++ b/src/webgl/homeMotion.js
+@@ -0,0 +1,17 @@
++// Fractions of the hero's actual height; tune the release interval here.
++export const RELEASE_START = 0.12
++export const RELEASE_END = 0.7
++
++export function advanceRelease(released, progress) {
++  const latched = released || progress >= RELEASE_END
++  const t = Math.max(0, Math.min(1, (progress - RELEASE_START) / (RELEASE_END - RELEASE_START)))
++  return { released: latched, amount: latched ? 1 : t * t * (3 - 2 * t) }
++}
++
++export function easeRelease(current, target, delta) {
++  return current + (target - current) * (1 - Math.exp(-3 * Math.min(Math.max(delta, 0), 1 / 60)))
++}
++
++export function nameLines(width) {
++  return width < 700 ? ['Yuugou', 'Ohno'] : ['YuugouOhno']
++}
+diff --git a/src/webgl/nameTargets.js b/src/webgl/nameTargets.js
+new file mode 100644
+index 0000000..c51941d
+--- /dev/null
++++ b/src/webgl/nameTargets.js
+@@ -0,0 +1,41 @@
++import { nameLines } from './homeMotion.js'
++
++// Rasterize a local system font, independent of asynchronous web-font loading.
++// Evenly sample filled glyphs, so every fish begins inside a letter on frame one.
++export function createNameTargets(count, width, height, worldHeight) {
++  const canvas = document.createElement('canvas')
++  canvas.width = 1200
++  canvas.height = 500
++  const ctx = canvas.getContext('2d', { willReadFrequently: true })
++  if (!ctx) throw new Error('Name rasterization unavailable')
++  const lines = nameLines(width)
++  const fontSize = lines.length === 1 ? 180 : 200
++  ctx.font = `700 ${fontSize}px Arial, sans-serif`
++  ctx.fillStyle = '#fff'
++  ctx.textAlign = 'center'
++  ctx.textBaseline = 'middle'
++  const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
++  const scale = Math.min(1, 1120 / maxWidth)
++  ctx.translate(600, 250)
++  ctx.scale(scale, scale)
++  lines.forEach((line, i) => ctx.fillText(line, 0, (i - (lines.length - 1) / 2) * 220))
++  const pixels = ctx.getImageData(0, 0, 1200, 500).data
++  const points = []
++  for (let y = 0; y < 500; y += 2) {
++    for (let x = 0; x < 1200; x += 2) {
++      if (pixels[(y * 1200 + x) * 4 + 3] > 160) points.push([x, y])
++    }
++  }
++  if (!points.length) throw new Error('Empty name targets')
++  const worldWidth = worldHeight * width / height
++  const displayWidth = Math.min(worldWidth * .9, 135)
++  const data = new Float32Array(count * 4)
++  for (let i = 0; i < count; i++) {
++    const [x, y] = points[Math.floor((i + .5) * points.length / count)]
++    data[i * 4] = (x - 600) / 1200 * displayWidth
++    data[i * 4 + 1] = -(y - 250) / 1200 * displayWidth + worldHeight * .04
++    data[i * 4 + 2] = 0
++    data[i * 4 + 3] = i * 2.399963 // stable individual swimming phase
++  }
++  return data
++}
+diff --git a/tests/home-browser.mjs b/tests/home-browser.mjs
+new file mode 100644
+index 0000000..946de57
+--- /dev/null
++++ b/tests/home-browser.mjs
+@@ -0,0 +1,305 @@
++// Optional browser verification; keep Playwright outside application dependencies.
++// Start `npm run dev -- --host 127.0.0.1` separately, then:
++// PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tests/home-browser.mjs
++import assert from 'node:assert/strict'
++import { mkdir, writeFile } from 'node:fs/promises'
++import { pathToFileURL } from 'node:url'
++
++const output = 'docs/home-prototype/evidence'
++const base = process.env.HOME_TEST_URL || 'http://127.0.0.1:5173'
++const viewports = [
++  ['desktop', { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 }],
++  ['mobile-emulated', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true }],
++]
++const report = {
++  environment: { platform: process.platform, node: process.version, date: new Date().toISOString(), base },
++  plannedViewports: viewports, physicalDevicesVerified: false, screenshots: [],
++  results: [], status: 'running', stage: 'browser-launch',
++}
++await mkdir(output, { recursive: true })
++let browser
++try {
++  const modulePath = process.env.PLAYWRIGHT_MODULE
++  const { chromium } = await import(modulePath ? pathToFileURL(modulePath).href : 'playwright')
++  browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 'chrome', headless: true })
++  report.stage = 'browser-checks'
++  report.environment.browser = browser.version()
++  report.environment.mode = 'headless desktop browser; mobile viewport/touch emulation, not physical devices'
++  const errors = []
++  async function contextFor(options = {}) {
++    const context = await browser.newContext(options)
++    // Isolate existing third-party scripts from local visual verification.
++    await context.route('**/*', async route => {
++      const url = new URL(route.request().url())
++      if (url.origin !== new URL(base).origin) return route.abort()
++      if (url.pathname !== '/src/webgl/Scene.js') return route.continue()
++      // Dev-server test instrumentation only: inspect real GPU positions and
++      // live scene ownership without exposing a scene handle in application code.
++      const response = await route.fetch()
++      await route.fulfill({ response, body: await response.text() + `
++        window.__homeScenes = new Set();
++        const originalInit = Scene.prototype.init;
++        Scene.prototype.init = function () {
++          originalInit.call(this);
++          window.__homeScenes.add(this);
++        };
++        const originalDispose = Scene.prototype.dispose;
++        Scene.prototype.dispose = function () {
++          originalDispose.call(this);
++          window.__homeScenes.delete(this);
++        };
++      ` })
++    })
++    const page = await context.newPage()
++    page.on('pageerror', error => errors.push(error.message))
++    return { context, page }
++  }
++  async function capture(page, name) {
++    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${name}: horizontal overflow`)
++    await page.screenshot({ path: `${output}/${name}.png` })
++    report.screenshots.push(`${name}.png`)
++  }
++  const waitForFish = page => page.waitForSelector('.has-fish .home-ocean canvas')
++  async function assertBodyFishVisible(page, label) {
++    const rendered = await page.evaluate(() => {
++      const scene = [...window.__homeScenes][0]
++      scene.renderer.render(scene.scene, scene.camera)
++      // Read the actual rendered triangles, not simulation centers. Copy in
++      // the same task before WebGL discards the default drawing buffer.
++      const canvas = scene.renderer.domElement
++      const copy = document.createElement('canvas')
++      copy.width = canvas.width
++      copy.height = canvas.height
++      const ctx = copy.getContext('2d', { willReadFrequently: true })
++      ctx.drawImage(canvas, 0, 0)
++      const { data } = ctx.getImageData(0, 0, copy.width, copy.height)
++      const ratioX = copy.width / innerWidth
++      const ratioY = copy.height / innerHeight
++      const masks = [...document.querySelectorAll('.home-copy, .home-footer, .home-header')]
++        .map(el => el.getBoundingClientRect())
++      let visiblePixels = 0
++      for (let y = 0; y < copy.height; y++) {
++        for (let x = 0; x < copy.width; x++) {
++          const offset = (y * copy.width + x) * 4
++          if (data[offset + 3] < 128 || Math.max(data[offset], data[offset + 1], data[offset + 2]) < 55) continue
++          const cssX = x / ratioX, cssY = y / ratioY
++          if (masks.some(rect => cssX >= rect.left && cssX <= rect.right && cssY >= rect.top && cssY <= rect.bottom)) continue
++          visiblePixels++
++        }
++      }
++      return { visibleCssPixels: visiblePixels / (ratioX * ratioY), simulationSeconds: scene.elapsed }
++    })
++    report.results.push({ label, rendered })
++    assert.ok(rendered.visibleCssPixels >= 20, `${label}: body fish not visibly rendered outside opaque copy: ${JSON.stringify(rendered)}`)
++  }
++  async function readProjection(page) {
++    const bounds = await page.evaluate(() => {
++      const scene = [...window.__homeScenes][0]
++      const { renderer, camera, fishMesh, gpgpu } = scene
++      const positions = new Float32Array(scene.config.boidCount * 4)
++      renderer.readRenderTargetPixels(gpgpu.gpuCompute.getCurrentRenderTarget(gpgpu.positionVariable),
++        0, 0, gpgpu.textureSize, gpgpu.textureSize, positions)
++      fishMesh.mesh.updateMatrixWorld(true)
++      const point = camera.position.clone()
++      const uniforms = fishMesh.material.uniforms
++      let x = 0, y = 0, z = 0, minX = Infinity
++      for (let i = 0; i < positions.length; i += 4) {
++        // Mirror home-fish.vert's depth-dependent viewport transform before
++        // applying the real Three.js camera. Check xyz, not just screen xy.
++        const t = Math.max(0, Math.min(1, -positions[i + 2] / 35))
++        const laneWeight = t * t * (3 - 2 * t)
++        const scale = uniforms.uFormationScale.value
++        const scaleX = scale + (uniforms.uLaneScaleX.value - scale) * laneWeight
++        const scaleY = scale + (1 - scale) * laneWeight
++        point.set(positions[i] * scaleX,
++          positions[i + 1] * scaleY + uniforms.uFormationOffsetY.value * (1 - laneWeight), positions[i + 2])
++          .applyMatrix4(fishMesh.mesh.matrixWorld).project(camera)
++        x = Math.max(x, Math.abs(point.x))
++        y = Math.max(y, Math.abs(point.y))
++        z = Math.max(z, Math.abs(point.z))
++        minX = Math.min(minX, Math.abs(point.x))
++      }
++      return { x, y, z, minX, scenes: window.__homeScenes.size, released: scene.visit.released }
++    })
++    assert.equal(bounds.scenes, 1)
++    assert.ok(bounds.z < 1, `fish clipped in depth: ${JSON.stringify(bounds)}`)
++    return bounds
++  }
++  async function assertFormationFits(page) {
++    const bounds = await readProjection(page)
++    assert.equal(bounds.released, false)
++    assert.ok(bounds.x > .2 && bounds.x < .95, `fish formation clipped horizontally: ${JSON.stringify(bounds)}`)
++    assert.ok(bounds.y > .05 && bounds.y < .85, `fish formation clipped vertically: ${JSON.stringify(bounds)}`)
++  }
++  for (const [label, options] of viewports) {
++    const { context, page } = await contextFor(options)
++    await page.goto(base)
++    await waitForFish(page)
++    await page.evaluate(() => document.fonts.ready)
++    assert.equal(await page.locator('h1').textContent(), 'YuugouOhno')
++    await assertFormationFits(page)
++    await capture(page, `${label}-formation`)
++    // Regress the reported bug BEFORE release, including both rotation directions.
++    for (const [width, height] of [[390, 844], [844, 390], [320, 740], [1440, 900]]) {
++      await page.setViewportSize({ width, height })
++      await page.waitForFunction(({ width, height }) => {
++        const scene = [...window.__homeScenes][0]
++        return Math.abs(scene.camera.aspect - width / height) < .001
++      }, { width, height })
++      await assertFormationFits(page)
++      await capture(page, `${label}-forming-resize-${width}x${height}`)
++    }
++    await page.setViewportSize(options.viewport)
++    await page.evaluate(() => scrollTo(0, document.querySelector('.home-hero').offsetHeight * .4))
++    await page.waitForTimeout(700)
++    await capture(page, `${label}-loosening`)
++    await page.evaluate(() => scrollTo(0, 0))
++    assert.equal(await page.locator('.home-ocean').getAttribute('data-release'), 'forming')
++    if (label === 'desktop') {
++      await page.mouse.wheel(0, 1000)
++      await page.waitForFunction(() => scrollY > 100)
++    } else {
++      const cdp = await context.newCDPSession(page)
++      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 190, y: 650 }] })
++      for (const y of [550, 450, 350, 250, 150]) {
++        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 190, y }] })
++      }
++      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
++      await page.waitForFunction(() => scrollY > 100)
++    }
++    await page.evaluate(() => document.querySelector('#profile').scrollIntoView())
++    await page.waitForFunction(() => document.querySelector('.home-ocean').dataset.blend === '1.000')
++    await page.waitForTimeout(1500)
++    await capture(page, `${label}-body`)
++    await assertBodyFishVisible(page, `${label}-body-visible-pixels`)
++    await page.waitForTimeout(30000)
++    await capture(page, `${label}-body-after-30s`)
++    await assertBodyFishVisible(page, `${label}-body-after-30s-visible-pixels`)
++    await page.evaluate(() => scrollTo(0, 0))
++    await page.waitForTimeout(100)
++    assert.equal(await page.locator('.home-ocean').getAttribute('data-release'), 'released')
++    await capture(page, `${label}-returned-released`)
++    await page.locator('.motion-toggle').click()
++    await page.setViewportSize({ width: 320, height: 740 })
++    await capture(page, `${label}-paused-resized`)
++    assert.ok(await page.locator('h1').evaluate(el => el.getBoundingClientRect().width <= innerWidth))
++    await page.locator('.motion-toggle').click()
++    for (const width of [768, 320, 1440]) {
++      await page.setViewportSize({ width, height: 900 })
++      assert.equal(await page.locator('.home-ocean canvas').count(), 1)
++    }
++    await page.locator('.home-header nav a').click()
++    await page.waitForFunction(() => scrollY > 100)
++    await page.reload()
++    await waitForFish(page)
++    await page.waitForFunction(() => document.querySelector('.home-ocean').dataset.release === 'released')
++    await capture(page, `${label}-deep-reload`)
++    for (let visit = 0; visit < 3; visit++) {
++      await page.locator('a[data-route][href="/forllm"]').click()
++      assert.equal(await page.locator('.home-ocean').count(), 0)
++      assert.equal(await page.evaluate(() => window.__homeScenes.size), 0)
++      assert.equal(await page.locator('html').evaluate(el => el.classList.contains('home-active')), false)
++      await page.goBack()
++      await waitForFish(page)
++      assert.equal(await page.locator('.home-ocean canvas').count(), 1)
++      assert.equal(await page.evaluate(() => window.__homeScenes.size), 1)
++    }
++    await page.locator('a[data-route][href="/ar"]').click()
++    assert.equal(await page.locator('.home-ocean').count(), 0)
++    assert.equal(await page.evaluate(() => window.__homeScenes.size), 0)
++    await page.goBack()
++    await waitForFish(page)
++    await page.evaluate(() => scrollTo(0, 0))
++    await page.keyboard.press('PageDown')
++    await page.waitForFunction(() => scrollY > 100)
++    report.results.push({ label, options, passed: true, checks: 'formation/GPU bounds before release on shrink and both rotations/scroll/touch or wheel/keyboard/anchors/latch/deep reload/pause/resize/live scene ownership across route cycles' })
++    await context.close()
++  }
++  // Deep initialization reproduces the review's near/far distribution. Freeze
++  // time (not rendering) so each resize must preserve the same GPU state.
++  for (const [initialWidth, initialHeight] of [[1440, 900], [390, 844], [844, 390], [320, 740]]) {
++    const { context, page } = await contextFor({ viewport: { width: initialWidth, height: initialHeight } })
++    await context.addInitScript(() => {
++      new MutationObserver((_, observer) => {
++        const profile = document.querySelector('#profile')
++        if (profile) {
++          profile.scrollIntoView()
++          observer.disconnect()
++        }
++      }).observe(document, { childList: true, subtree: true })
++    })
++    await page.goto(`${base}/#profile`)
++    await waitForFish(page)
++    await page.evaluate(() => {
++      const scene = [...window.__homeScenes][0]
++      scene.setPaused(true)
++      const gpu = scene.gpgpu
++      const pixels = new Float32Array(scene.config.boidCount * 4)
++      scene.renderer.readRenderTargetPixels(gpu.gpuCompute.getCurrentRenderTarget(gpu.positionVariable),
++        0, 0, gpu.textureSize, gpu.textureSize, pixels)
++      window.__resizeSnapshot = { scene, gpu, targets: scene.targets, pixels: Array.from(pixels) }
++    })
++    for (const [width, height] of [[390, 844], [844, 390], [320, 740], [1440, 900]]) {
++      await page.setViewportSize({ width, height })
++      await page.waitForFunction(({ width, height }) =>
++        Math.abs([...window.__homeScenes][0].camera.aspect - width / height) < .001, { width, height })
++      const bounds = await readProjection(page)
++      assert.equal(bounds.released, true)
++      assert.ok(bounds.minX > .8 && bounds.x < .96 && bounds.y < .7, JSON.stringify(bounds))
++      assert.equal(await page.evaluate(() => {
++        const { scene, gpu, targets, pixels } = window.__resizeSnapshot
++        const current = new Float32Array(pixels.length)
++        scene.renderer.readRenderTargetPixels(gpu.gpuCompute.getCurrentRenderTarget(gpu.positionVariable),
++          0, 0, gpu.textureSize, gpu.textureSize, current)
++        return scene === [...window.__homeScenes][0] && scene.gpgpu === gpu && scene.targets === targets &&
++          current.every((value, i) => value === pixels[i])
++      }), true, 'resize must preserve scene, targets, simulation and positions')
++      const name = `released-${initialWidth}x${initialHeight}-to-${width}x${height}`
++      await capture(page, name)
++      report.results.push({ label: name, passed: true, projection: bounds })
++    }
++    await context.close()
++  }
++  for (const mode of ['reduced-motion', 'webgl-unavailable', 'float-target-unavailable', 'shader-failure', 'context-loss']) {
++    const { context, page } = await contextFor({ viewport: { width: 390, height: 844 }, reducedMotion: mode === 'reduced-motion' ? 'reduce' : 'no-preference' })
++    if (mode === 'webgl-unavailable') await page.addInitScript(() => {
++      const original = HTMLCanvasElement.prototype.getContext
++      HTMLCanvasElement.prototype.getContext = function (type, ...args) {
++        return /webgl/.test(type) ? null : original.call(this, type, ...args)
++      }
++    })
++    if (mode === 'float-target-unavailable') await page.addInitScript(() => {
++      const original = WebGL2RenderingContext.prototype.getExtension
++      WebGL2RenderingContext.prototype.getExtension = function (name) {
++        return name === 'EXT_color_buffer_float' ? null : original.call(this, name)
++      }
++    })
++    if (mode === 'shader-failure') await page.addInitScript(() => {
++      WebGL2RenderingContext.prototype.compileShader = function () { throw new Error('Injected compile failure') }
++    })
++    await page.goto(base)
++    if (mode === 'context-loss') {
++      await waitForFish(page)
++      await page.locator('.home-ocean canvas').evaluate(canvas => canvas.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext())
++    }
++    await page.waitForTimeout(1500)
++    assert.equal(await page.locator('.home-ocean canvas').count(), 0)
++    assert.equal(await page.locator('h1').textContent(), 'YuugouOhno')
++    await capture(page, mode)
++    await page.locator('.home-header nav a').click()
++    await page.waitForFunction(() => scrollY > 100)
++    assert.ok(await page.locator('#profile h2').isVisible())
++    report.results.push({ mode, passed: true })
++    await context.close()
++  }
++  assert.deepEqual(errors, [])
++  report.status = 'passed; images require human inspection'
++} catch (error) {
++  report.status = 'failed or blocked'
++  report.error = error.message.split('Call log:')[0].slice(0, 6000)
++  process.exitCode = 1
++} finally {
++  await browser?.close()
++  await writeFile(`${output}/browser-results.json`, JSON.stringify(report, null, 2) + '\n')
++  console.log(report.status)
++}
+diff --git a/tests/home-layout.test.js b/tests/home-layout.test.js
+new file mode 100644
+index 0000000..9a193fe
+--- /dev/null
++++ b/tests/home-layout.test.js
+@@ -0,0 +1,71 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { PerspectiveCamera, Vector3 } from 'three'
++import { fitNameToViewport } from '../src/webgl/homeLayout.js'
++
++const worldHeight = 2 * Math.tan(25 * Math.PI / 180) * 100
++const viewports = [[1440, 900], [390, 844], [844, 390], [320, 740]]
++
++test('body fish retain a discernible projected size regardless of the initial name width', () => {
++  for (const [initialWidth, initialHeight] of viewports) {
++    const initialWorldWidth = worldHeight * initialWidth / initialHeight
++    for (const [width, height] of viewports) {
++      const fit = fitNameToViewport(Math.min(initialWorldWidth * .9, 135), width, height, worldHeight, initialWorldWidth)
++      // Smallest 1.5-unit cone, viewed broadside. Actual orientation/occlusion
++      // additionally need rendered-pixel checks and screenshot inspection.
++      const nearPixels = 1.5 * .8 * fit.laneFishScale * height / (worldHeight * 1.35)
++      const farPixels = nearPixels * 1.35 / 2.6
++      assert.ok(nearPixels >= 3 && nearPixels <= 4, `near fish too small/large: ${nearPixels}`)
++      assert.ok(farPixels >= 1.5 && farPixels <= 2.1, `far fish too small/large: ${farPixels}`)
++    }
++  }
++})
++
++test('an existing formation fits immediately through shrinking and rotation without moving fish', () => {
++  for (const [initialWidth, initialHeight] of viewports) {
++    const formationWidth = Math.min(worldHeight * initialWidth / initialHeight * .9, 135)
++    // Enclose the entire 1200 × 500 glyph raster, including fish geometry.
++    const positions = [-1, 1].flatMap(x => [-1, 1].map(y => [
++      x * formationWidth * .48,
++      worldHeight * .04 + y * formationWidth * .22,
++    ]))
++    const original = structuredClone(positions)
++    for (const [width, height] of viewports) {
++      const fit = fitNameToViewport(formationWidth, width, height, worldHeight, worldHeight * initialWidth / initialHeight)
++      for (const [x, y] of positions) {
++        const screenX = x * fit.scale / (worldHeight * width / height) + .5
++        const screenY = .5 - (y * fit.scale + fit.offsetY) / worldHeight
++        assert.ok(screenX >= .05 && screenX <= .95, `horizontal clipping: ${width}×${height}`)
++        assert.ok(screenY >= .1 && screenY <= .8, `vertical clipping: ${width}×${height}`)
++      }
++    }
++    assert.deepEqual(positions, original)
++    assert.equal(fitNameToViewport(formationWidth, initialWidth, initialHeight, worldHeight, worldHeight * initialWidth / initialHeight).scale, 1)
++  }
++})
++
++test('released near and far lanes retain xyz projection through every resize, without changing simulation positions', () => {
++  for (const [initialWidth, initialHeight] of viewports) {
++    const initialWorldWidth = worldHeight * initialWidth / initialHeight
++    const formationWidth = Math.min(initialWorldWidth * .9, 135)
++    for (const [width, height] of viewports) {
++      const camera = new PerspectiveCamera(50, width / height, .1, 600)
++      camera.position.z = 100
++      camera.updateMatrixWorld()
++      const fit = fitNameToViewport(formationWidth, width, height, worldHeight, initialWorldWidth)
++      for (const z of [-35, -160]) {
++        for (const side of [-1, 1]) {
++          for (const y of [-36, 0, 36]) {
++            const x = side * initialWorldWidth * (z === -35 ? .6 : 1.15)
++            // At lane depth the shader uses this presentation, never a z scale.
++            const projected = new Vector3(x * fit.laneScaleX, y, z).project(camera)
++            assert.ok(Math.abs(projected.x) > .85 && Math.abs(projected.x) < .91,
++              `side lane lost after ${initialWidth}x${initialHeight} -> ${width}x${height}: ${projected.x}`)
++            assert.ok(Math.abs(projected.y) < .6)
++            assert.ok(projected.z > -1 && projected.z < 1, `depth clipped: ${projected.z}`)
++          }
++        }
++      }
++    }
++  }
++})
+diff --git a/tests/home-motion.test.js b/tests/home-motion.test.js
+new file mode 100644
+index 0000000..0d10307
+--- /dev/null
++++ b/tests/home-motion.test.js
+@@ -0,0 +1,43 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { advanceRelease, easeRelease, nameLines } from '../src/webgl/homeMotion.js'
++
++test('formation loosens with actual hero progress and can reverse before release', () => {
++  assert.deepEqual(advanceRelease(false, 0), { released: false, amount: 0 })
++  const midway = advanceRelease(false, .4)
++  assert.ok(midway.amount > 0 && midway.amount < 1)
++  assert.equal(advanceRelease(midway.released, 0).amount, 0)
++})
++test('release is latched for this visit, including deep restoration and resize', () => {
++  const deep = advanceRelease(false, 4)
++  assert.deepEqual(deep, { released: true, amount: 1 })
++  assert.deepEqual(advanceRelease(deep.released, 0), deep)
++  assert.deepEqual(advanceRelease(true, .1), deep)
++})
++test('large scroll jumps and background-tab time cannot jump the release blend', () => {
++  assert.equal(easeRelease(0, 1, 0), 0)
++  assert.ok(easeRelease(0, 1, 10) < .06)
++  let value = 0
++  for (let i = 0; i < 240; i++) value = easeRelease(value, 1, 1 / 60)
++  assert.ok(value > .99)
++})
++test('responsive lines preserve the exact name and case', () => {
++  for (const width of [320, 390, 600, 768, 1440]) {
++    assert.equal(nameLines(width).join(''), 'YuugouOhno')
++  }
++  assert.deepEqual(nameLines(390), ['Yuugou', 'Ohno'])
++})
++
++test('overscroll is clamped and release is continuous at the configurable boundaries', async () => {
++  const { RELEASE_START, RELEASE_END } = await import('../src/webgl/homeMotion.js')
++  assert.equal(advanceRelease(false, -1).amount, 0)
++  assert.equal(advanceRelease(false, RELEASE_START).amount, 0)
++  assert.equal(advanceRelease(false, RELEASE_END - 1e-8).released, false)
++  assert.equal(advanceRelease(false, RELEASE_END).released, true)
++  let previous = 0
++  for (let i = 0; i <= 100; i++) {
++    const { amount } = advanceRelease(false, i / 100)
++    assert.ok(amount >= previous && amount <= 1)
++    previous = amount
++  }
++})
