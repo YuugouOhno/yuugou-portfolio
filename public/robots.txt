@@ -31,6 +31,3 @@ Allow: /
 
 # Sitemap location
 Sitemap: https://yuugouohno.com/sitemap.xml
-
-# For LLM/AI structured data
-# Please visit https://yuugouohno.com/forllm for structured information about Yuugou Ohno

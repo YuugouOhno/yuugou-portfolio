@@ -10,6 +10,18 @@ uniform float uSeparationWeight;
 uniform float uAlignmentWeight;
 uniform float uCohesionWeight;
 
+// Body overlap (any group): fish closer than uBodyDistance get pushed apart
+uniform float uBodyDistance;
+uniform float uBodyWeight;
+uniform float uBodyMax;
+
+// Tag-towing boids (texture indices [uTagStart, uTagEnd)) get a soft extra push
+// from each other, so tags pile up less while the fish stay in their school
+uniform float uTagStart;
+uniform float uTagEnd;
+uniform float uTagSeparationDistance;
+uniform float uTagSeparationWeight;
+
 uniform float uMaxSpeed;
 uniform float uMinSpeed;
 
@@ -91,6 +103,20 @@ vec3 avoidSphere(vec3 pos) {
   return vec3(0.0);
 }
 
+// Turn along the wall: cancel only the outward part of the velocity, harder
+// closer to the wall, so fish curve away instead of ramming it
+vec3 turnFromWall(vec3 pos, vec3 vel) {
+  float dist = length(pos);
+  float margin = 12.0;
+  float boundary = uSphereRadius - margin;
+  if (dist < boundary || dist < 0.01) return vec3(0.0);
+
+  vec3 n = pos / dist;
+  float k = (dist - boundary) / margin;
+  float vOut = max(dot(vel, n), 0.0);
+  return -n * (vOut * k * 8.0 + k * k * 4.0);
+}
+
 void main() {
   vec2 uv = gl_FragCoord.xy / resolution.xy;
 
@@ -120,6 +146,7 @@ void main() {
 
   vec3 acc = vec3(0.0);
   acc += avoidSphere(position) * uWallWeight;
+  acc += turnFromWall(position, velocity);
 
   if (isShark) {
     float texStep = 1.0 / resolution.x;
@@ -167,17 +194,22 @@ void main() {
     vec3 alignment  = vec3(0.0);
     vec3 cohesion   = vec3(0.0);
     vec3 sharkFlee  = vec3(0.0);
+    vec3 tagSpread  = vec3(0.0);
+    vec3 body       = vec3(0.0);
 
     int separationCount = 0;
     int alignmentCount  = 0;
     int cohesionCount   = 0;
 
     float texSize = 1.0 / resolution.x;
+    float myIndex = floor(gl_FragCoord.y) * resolution.x + floor(gl_FragCoord.x);
+    bool iTag = myIndex >= uTagStart && myIndex < uTagEnd;
 
     for (float y = 0.0; y < resolution.y; y += 1.0) {
       for (float x = 0.0; x < resolution.x; x += 1.0) {
         vec2 ref = vec2(x, y) * texSize;
-        if (ref.x == uv.x && ref.y == uv.y) continue;
+        float otherIndex = y * resolution.x + x;
+        if (otherIndex == myIndex) continue;
 
         vec4 otherVel  = texture2D(textureVelocity, ref);
         float otherGroup = otherVel.w;
@@ -194,17 +226,28 @@ void main() {
           continue;
         }
 
-        // Only interact with same group
-        if (myGroup != otherGroup) continue;
-
         vec3 otherPos = texture2D(texturePosition, ref).xyz;
         float dist    = distance(position, otherPos);
 
+        // Body overlap applies across groups, so schools don't pass through each other.
+        // Summed (not averaged) and steeper up close, so crowding pushes harder.
+        if (dist < uBodyDistance && dist > 0.0) {
+          float w = 1.0 - dist / uBodyDistance;
+          body += normalize(position - otherPos) * w * w;
+        }
+        bool otherTag = otherIndex >= uTagStart && otherIndex < uTagEnd;
+        if (iTag && otherTag && dist < uTagSeparationDistance && dist > 0.0) {
+          tagSpread += normalize(position - otherPos) * (1.0 - dist / uTagSeparationDistance);
+        }
+
+        // Flocking only within the same group
+        if (myGroup != otherGroup) continue;
+
         if (dist < uSeparationDistance && dist > 0.0) {
-          vec3 diff = position - otherPos;
-          separation += normalize(diff) / dist;
+          separation += normalize(position - otherPos) / dist;
           separationCount++;
         }
+
         if (dist < uAlignmentDistance) {
           alignment += otherVel.xyz;
           alignmentCount++;
@@ -222,7 +265,9 @@ void main() {
       separation /= float(separationCount);
       acc += separation * uSeparationWeight;
     }
-    if (alignmentCount > 0) {
+    acc += limit(body * uBodyWeight, uBodyMax);
+    acc += tagSpread * uTagSeparationWeight;
+    if (alignmentCount > 0 && length(alignment) > 0.001) {
       alignment /= float(alignmentCount);
       alignment = normalize(alignment) * uMaxSpeed;
       alignment -= velocity;
@@ -232,6 +277,8 @@ void main() {
     if (cohesionCount > 0) {
       cohesion /= float(cohesionCount);
       cohesion = cohesion - position;
+    }
+    if (cohesionCount > 0 && length(cohesion) > 0.001) {
       cohesion = normalize(cohesion) * uMaxSpeed;
       cohesion -= velocity;
       cohesion = limit(cohesion, 0.5);
@@ -253,12 +300,19 @@ void main() {
 
   velocity += acc * uDelta;
 
+  // At the wall, drop the outward part so fish slide along it instead of pressing into it
+  float r = length(position);
+  if (r > uSphereRadius - 1.0) {
+    vec3 n = position / r;
+    velocity -= n * max(dot(velocity, n), 0.0);
+  }
+
   float effectiveMaxSpeed = uMaxSpeed * sharkSpeedMult;
   float speed = length(velocity);
   if (speed > effectiveMaxSpeed) {
     velocity = normalize(velocity) * effectiveMaxSpeed;
   } else if (speed < uMinSpeed) {
-    velocity = normalize(velocity) * uMinSpeed;
+    velocity = (speed > 0.0001 ? velocity / speed : vec3(0.0, 0.0, 1.0)) * uMinSpeed;
   }
 
   gl_FragColor = vec4(velocity, myGroup);

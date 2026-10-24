@@ -14,9 +14,10 @@ export function homePage() {
   // Mount page content
   appContainer.appendChild(App())
 
-  // Wheel scroll → camera orbit (skip if over control UI)
+  // Wheel scroll → camera orbit
   const onWheel = (e) => {
-    if (e.target.closest('#control-container')) return
+    // Let panel content scroll natively
+    if (e.target.closest('.tag-panel-body')) return
     e.preventDefault()
     scene.orbit(e.deltaX, e.deltaY)
   }

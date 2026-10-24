@@ -3,7 +3,10 @@ import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { GPGPUSimulation } from './GPGPUSimulation.js'
 import { FishMesh } from './FishMesh.js'
+import { FishTags } from './FishTags.js'
+import { tags } from '../data/tags.js'
 import { Hero } from '../components/Hero/Hero.js'
+import { TagPanel, TAG_TITLE_LINE, TAG_PANEL_PAD } from '../components/TagPanel/TagPanel.js'
 
 export class Scene {
   constructor() {
@@ -21,29 +24,26 @@ export class Scene {
       sphereRadius: 45,
       groupCount: 5,    // 0-2: normal fish, 3: density shark, 4: isolation shark
       sharkCount: 2,
+      tagCount: tags.length + 1, // boids right after the sharks tow a tag (+1 for the card)
     }
 
     // Quaternion-based camera orbit: camera always looks at origin from radius 85.
     // orientation/targetOrientation encode both position and roll on the sphere.
-    const _heroQ = this._computeLookAtQuat(new THREE.Vector3(
-      Math.sin(Math.PI * 0.18), Math.cos(Math.PI * 0.18), 0
-    ))
+    // Start level with the whale's orbit (y = 0), so it swims horizontally across the screen
+    const _heroQ = this._computeLookAtQuat(new THREE.Vector3(0, 0, 1))
     this.cam = {
       orientation:       _heroQ.clone(),
       targetOrientation: _heroQ.clone(),
       radius:            85,
     }
 
-    // Depth-based content: each item appears when accumulatedTheta ≈ depth.
-    // loop:true items repeat every `period` radians (default 2π).
-    this.contentItems = [
-      { name: 'hero', depth: 0, loop: true, period: Math.PI * 2 },
-      // { name: 'works',   depth: Math.PI * 0.8  },
-      // { name: 'contact', depth: Math.PI * 1.6  },
-      // { name: 'about',   depth: Math.PI * 2.4  },
-      // { name: 'skills',  depth: Math.PI * 3.2  },
-    ]
-    this.accumulatedTheta = 0
+    // Popouts: the profile card and one panel per tag. Each is either towed by a
+    // fish or pulled out in front of the camera; only one can be in front.
+    //   front → toTowed → towed → toFront → front
+    // Scrolling the camera is allowed only while every popout is towed.
+    this.popouts = []
+    this.popoutDuration = 1.4 // seconds
+    this.frontRadius = 50     // distance from origin, along the camera direction
 
     this.cssRenderer = null
     this.cssScene = null
@@ -71,9 +71,10 @@ export class Scene {
     this.initCamera()
     this.initGPGPU()
     this.initFishMesh()
+    this.initFishTags()
     this.initCSS3D()
     this.initWhale()
-    this.initUI()
+    this.initSpeedIntro()
     this.addEventListeners()
     this.animate()
   }
@@ -144,8 +145,15 @@ export class Scene {
     this.scene.add(this.fishMesh.mesh)
   }
 
+  initFishTags() {
+    // Last slot is a bare rope for the profile card
+    this.fishTags = new FishTags(this.renderer, this.scene, this.gpgpu, [...tags.map((t) => t.title), null], this.config.sharkCount)
+    this.cardTagIndex = tags.length
+  }
+
   initWhale() {
-    this.whaleAngle = 0
+    // Start front-right of the center, heading left across the view
+    this.whaleAngle = Math.PI / 2 - 0.6
     this.whalePos   = new THREE.Vector3()
     this.whaleMesh  = null
     this.whaleAnimMixer = null
@@ -178,386 +186,208 @@ export class Scene {
     document.body.appendChild(cssEl)
 
     this.cssScene = new THREE.Scene()
-    this.contentObjects = []
-    this.createContentPanels()
+    this.createPopouts()
   }
 
-  createContentPanels() {
-    const contentRadius = 50
-    const numStrips = 20
-    const totalVerticalArc = 0.93
-    const visibleWindow = totalVerticalArc * 1.5
+  createPopouts() {
+    // Profile card: starts in front, towed whole by a bare rope
+    const heroSection = Hero({
+      onClose: () => this.closePopout(card),
+      onSummon: () => this.openPopout(card),
+    })
+    const card = this.addPopout({
+      element: heroSection.querySelector('.hero-card'),
+      ropeIndex: this.cardTagIndex,
+      state: 'front',
+      frontScale: () => 0.07,
+      towedScale: () => 0.016,
+      // attach by the middle of the card's leading edge
+      attach: (el) => ({ x: -el.offsetWidth / 2, y: 0 }),
+    })
 
-    const panelCssWidth = 1200
-    const fovRad = (60 * Math.PI) / 180
-    const panelDist = this.cam.radius - contentRadius
-    const visibleWidth = 2 * Math.tan(fovRad / 2) * panelDist * (window.innerWidth / window.innerHeight)
-    const scale = visibleWidth / panelCssWidth
-    const arcLenPerStrip = (contentRadius * totalVerticalArc) / numStrips
-    const stripCssHeight = Math.round(arcLenPerStrip / scale)
+    // If nobody touches the card, it joins the school on its own
+    this.cardAutoCloseTimeout = setTimeout(() => {
+      if (!this.disposed) this.closePopout(card)
+    }, 10000)
 
-    // Precomputed per-strip angle offsets from panel center (reused for all items)
-    const stripAlphas = Array.from({ length: numStrips }, (_, i) =>
-      ((i + 0.5) / numStrips - 0.5) * totalVerticalArc
+    // Tags: hidden until clicked; the ribbon is drawn by FishTags meanwhile
+    tags.forEach(({ title, body }, i) => {
+      const element = TagPanel({
+        title,
+        body,
+        onClose: () => this.closePopout(popout),
+      })
+      const popout = this.addPopout({
+        element,
+        ropeIndex: i,
+        state: 'towed',
+        // 1 CSS px = 1 screen px in front
+        frontScale: () => this._unitsPerPx(),
+        // title line box matches the ribbon height
+        towedScale: () => this.fishTags.labelHeight / TAG_TITLE_LINE,
+        // attach by the left of the title line
+        attach: () => ({ x: -this._panelSize().width / 2 + TAG_PANEL_PAD, y: -this._panelSize().height / 2 + TAG_PANEL_PAD + TAG_TITLE_LINE / 2 }),
+        isTag: true,
+      })
+    })
+
+    // Clicking empty space closes the front popout, or opens the tag that was hit
+    this._onCanvasClick = (e) => {
+      if (this._drag.moved) return
+      const front = this.popouts.find((p) => p.state === 'front' || p.state === 'toFront')
+      if (front) return this.closePopout(front)
+      const hit = this._pickTag(e)
+      if (hit) this.openPopout(hit)
+    }
+    this.renderer.domElement.addEventListener('click', this._onCanvasClick)
+  }
+
+  addPopout({ element, ropeIndex, state, frontScale, towedScale, attach, isTag = false }) {
+    const object = new CSS3DObject(element)
+    this.cssScene.add(object)
+    const popout = { element, object, ropeIndex, state, t: 0, frontScale, towedScale, attach, isTag }
+    this.popouts.push(popout)
+    if (state === 'front') {
+      this.fishTags.setRopeVisible(ropeIndex, false)
+    } else {
+      element.classList.add('is-towed')
+    }
+    return popout
+  }
+
+  openPopout(popout) {
+    clearTimeout(this.cardAutoCloseTimeout)
+    if (popout.state === 'toTowed') return this._reversePopout(popout, 'toFront')
+    if (popout.state !== 'towed') return
+    if (this.popouts.some((p) => p.state !== 'towed')) return
+    if (popout.isTag) {
+      const { width, height } = this._panelSize()
+      popout.element.style.width = `${width}px`
+      popout.element.style.height = `${height}px`
+      popout.element.style.visibility = 'visible'
+      popout.element.querySelector('.tag-panel-body').scrollTop = 0
+      this.fishTags.setLabelVisible(popout.ropeIndex, false)
+      popout.element.classList.add('is-open')
+    }
+    popout.element.classList.remove('is-towed')
+    popout.state = 'toFront'
+    popout.t = 0
+  }
+
+  closePopout(popout) {
+    clearTimeout(this.cardAutoCloseTimeout)
+    if (popout.state === 'toFront') return this._reversePopout(popout, 'toTowed')
+    if (popout.state !== 'front') return
+    popout.element.classList.add('is-towed')
+    popout.element.classList.remove('is-open')
+    this.fishTags.setRopeVisible(popout.ropeIndex, true)
+    popout.state = 'toTowed'
+    popout.t = 0
+  }
+
+  // Turn around mid-flight; the easing is symmetric, so 1 - t keeps the pose continuous
+  _reversePopout(popout, state) {
+    popout.state = state
+    popout.t = 1 - popout.t
+    const toFront = state === 'toFront'
+    popout.element.classList.toggle('is-towed', !toFront)
+    if (popout.isTag) popout.element.classList.toggle('is-open', toFront)
+  }
+
+  _pickTag(event) {
+    const ndc = new THREE.Vector2(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1
     )
+    this.raycaster.setFromCamera(ndc, this.camera)
+    const i = this.fishTags.pick(this.raycaster)
+    return i < 0 ? null : this.popouts.find((p) => p.isTag && p.ropeIndex === i)
+  }
 
-    this._panelCfg = { contentRadius, visibleWindow }
+  // World units per screen pixel at the front distance
+  _unitsPerPx() {
+    const dist = this.cam.radius - this.frontRadius
+    return (2 * Math.tan((this.camera.fov * Math.PI) / 360) * dist) / window.innerHeight
+  }
 
-    for (const item of this.contentItems) {
-      if (item.name === 'hero') {
-        const heroSection = Hero()
-        const card = heroSection.querySelector('.hero-card')
-        card.style.visibility = 'hidden'
-        const heroObj = new CSS3DObject(card)
-        heroObj.scale.setScalar(0.07)
-        this.cssScene.add(heroObj)
-        this.contentObjects.push({
-          depth:      item.depth,
-          loop:       item.loop ?? false,
-          period:     item.period ?? Math.PI * 2,
-          name:       item.name,
-          elements:   [card],
-          objects:    [heroObj],
-          stripAlphas:[0],
-        })
-        continue
-      }
-
-      const elements = []
-      const objects  = []
-
-      for (let i = 0; i < numStrips; i++) {
-        const el = document.createElement('div')
-        const isMiddle = i === Math.floor(numStrips / 2)
-        el.style.cssText = `
-          width: ${panelCssWidth}px;
-          height: ${stripCssHeight}px;
-          background: rgba(10, 10, 40, 0.72);
-          border-left:  2px solid rgba(255,255,255,0.4);
-          border-right: 2px solid rgba(255,255,255,0.4);
-          ${i === 0             ? 'border-top:    2px solid rgba(255,255,255,0.4);' : ''}
-          ${i === numStrips - 1 ? 'border-bottom: 2px solid rgba(255,255,255,0.4);' : ''}
-          color: #fff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          font-size: 80px;
-          font-weight: 600;
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          display: flex;
-          align-items: center;
-          padding: 0 80px;
-          box-sizing: border-box;
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
-          visibility: hidden;
-        `
-        if (isMiddle) el.textContent = item.name
-
-        const obj = new CSS3DObject(el)
-        obj.scale.setScalar(scale)
-        this.cssScene.add(obj)
-        elements.push(el)
-        objects.push(obj)
-      }
-
-      this.contentObjects.push({
-        depth:      item.depth,
-        loop:       item.loop ?? false,
-        period:     item.period ?? Math.PI * 2,
-        name:       item.name,
-        elements,
-        objects,
-        stripAlphas,
-      })
+  _panelSize() {
+    return {
+      width: Math.min(560, window.innerWidth - 32),
+      height: Math.min(520, window.innerHeight * 0.7),
     }
   }
 
-  initUI() {
-    // Create gear button and control panel
-    const container = document.createElement('div')
-    container.id = 'control-container'
-    container.innerHTML = `
-      <button id="gear-btn">⚙</button>
-      <div id="control-panel" class="hidden">
-        <div class="control-header">Controls</div>
-        <div class="control-row">
-          <label>Speed</label>
-          <input type="range" id="speed-slider" min="5" max="40" value="10" step="1">
-          <span id="speed-value">10</span>
-        </div>
-        <div class="control-row">
-          <label>Size</label>
-          <input type="range" id="size-slider" min="0.5" max="3" value="1" step="0.1">
-          <span id="size-value">1.0</span>
-        </div>
-        <div class="control-divider"></div>
-        <div class="control-subheader">Boids Behavior</div>
-        <div class="control-row">
-          <label>Sep Dist</label>
-          <input type="range" id="sep-dist-slider" min="1" max="15" value="5" step="0.5">
-          <span id="sep-dist-value">5.0</span>
-        </div>
-        <div class="control-row">
-          <label>Sep Weight</label>
-          <input type="range" id="separation-slider" min="0" max="5" value="1.5" step="0.1">
-          <span id="separation-value">1.5</span>
-        </div>
-        <div class="control-row">
-          <label>Align Dist</label>
-          <input type="range" id="align-dist-slider" min="1" max="20" value="10" step="0.5">
-          <span id="align-dist-value">10.0</span>
-        </div>
-        <div class="control-row">
-          <label>Align Weight</label>
-          <input type="range" id="alignment-slider" min="0" max="3" value="1" step="0.1">
-          <span id="alignment-value">1.0</span>
-        </div>
-        <div class="control-row">
-          <label>Coh Dist</label>
-          <input type="range" id="coh-dist-slider" min="1" max="30" value="15" step="0.5">
-          <span id="coh-dist-value">15.0</span>
-        </div>
-        <div class="control-row">
-          <label>Coh Weight</label>
-          <input type="range" id="cohesion-slider" min="0" max="3" value="1" step="0.1">
-          <span id="cohesion-value">1.0</span>
-        </div>
-        <div class="control-divider"></div>
-        <div class="control-subheader">Mouse Interaction</div>
-        <div class="control-row">
-          <label>Mode</label>
-          <div class="mode-buttons">
-            <button id="mode-off" class="mode-btn">Off</button>
-            <button id="mode-repel" class="mode-btn">Repel</button>
-            <button id="mode-attract" class="mode-btn active">Attract</button>
-          </div>
-        </div>
-        <div class="control-row">
-          <label>Strength</label>
-          <input type="range" id="strength-slider" min="0" max="20" value="4.5" step="0.5">
-          <span id="strength-value">4.5</span>
-        </div>
-      </div>
-    `
-    document.body.appendChild(container)
+  _frontPose(popout, out) {
+    out.position.copy(this.camera.position).normalize().multiplyScalar(this.frontRadius)
+    out.quaternion.copy(this.cam.orientation)
+    out.scale = popout.frontScale()
+    return out
+  }
 
-    // Add styles
-    const style = document.createElement('style')
-    style.textContent = `
-      #control-container {
-        position: fixed;
-        bottom: 20px;
-        left: 20px;
-        z-index: 1000;
-      }
-      #gear-btn {
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        font-size: 20px;
-        cursor: pointer;
-        backdrop-filter: blur(10px);
-        transition: transform 0.3s, background 0.3s;
-      }
-      #gear-btn:hover {
-        background: rgba(0, 0, 0, 0.9);
-        transform: rotate(90deg);
-      }
-      #control-panel {
-        position: absolute;
-        bottom: 54px;
-        left: 0;
-        background: rgba(0, 0, 0, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 8px;
-        padding: 15px;
-        color: white;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 12px;
-        min-width: 200px;
-        backdrop-filter: blur(10px);
-        transition: opacity 0.3s, transform 0.3s;
-      }
-      #control-panel.hidden {
-        opacity: 0;
-        transform: translateY(10px);
-        pointer-events: none;
-      }
-      .control-header {
-        font-weight: bold;
-        margin-bottom: 12px;
-        font-size: 14px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        padding-bottom: 8px;
-      }
-      .control-row {
-        display: flex;
-        align-items: center;
-        margin-bottom: 8px;
-        gap: 10px;
-      }
-      .control-row label {
-        width: 70px;
-        flex-shrink: 0;
-      }
-      .control-row input[type="range"] {
-        flex: 1;
-        height: 4px;
-        -webkit-appearance: none;
-        background: rgba(255, 255, 255, 0.3);
-        border-radius: 2px;
-        cursor: pointer;
-      }
-      .control-row input[type="range"]::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        width: 14px;
-        height: 14px;
-        background: #4a9eff;
-        border-radius: 50%;
-        cursor: pointer;
-      }
-      .control-row span {
-        width: 30px;
-        text-align: right;
-      }
-      .control-divider {
-        height: 1px;
-        background: rgba(255, 255, 255, 0.2);
-        margin: 12px 0;
-      }
-      .control-subheader {
-        font-weight: bold;
-        margin-bottom: 10px;
-        font-size: 12px;
-        color: rgba(255, 255, 255, 0.8);
-      }
-      .mode-buttons {
-        display: flex;
-        gap: 4px;
-        flex: 1;
-      }
-      .mode-btn {
-        flex: 1;
-        padding: 4px 8px;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        background: transparent;
-        color: white;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 11px;
-        transition: background 0.2s, border-color 0.2s;
-      }
-      .mode-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
-      }
-      .mode-btn.active {
-        background: #4a9eff;
-        border-color: #4a9eff;
-      }
-    `
-    document.head.appendChild(style)
+  // Pose hanging off the end of the rope, attached at popout.attach() (CSS px from center, y down)
+  _towedPose(popout, out) {
+    const { position, tangent, up } = this.fishTags.getAnchor(popout.ropeIndex)
+    const z = new THREE.Vector3().crossVectors(tangent, up)
+    out.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(tangent, up, z))
+    out.scale = popout.towedScale()
+    const a = popout.attach(popout.element)
+    out.position.copy(position)
+      .addScaledVector(tangent, -a.x * out.scale)
+      .addScaledVector(up, a.y * out.scale)
+    return out
+  }
 
-    // Toggle panel visibility
-    const gearBtn = document.getElementById('gear-btn')
-    const panel = document.getElementById('control-panel')
-    gearBtn.addEventListener('click', () => {
-      panel.classList.toggle('hidden')
-    })
+  updatePopouts(delta) {
+    const from = this._poseA ??= { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() }
+    const to = this._poseB ??= { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() }
 
-    // Bind slider events
-    const speedSlider = document.getElementById('speed-slider')
-    const sizeSlider = document.getElementById('size-slider')
-    const sepDistSlider = document.getElementById('sep-dist-slider')
-    const separationSlider = document.getElementById('separation-slider')
-    const alignDistSlider = document.getElementById('align-dist-slider')
-    const alignmentSlider = document.getElementById('alignment-slider')
-    const cohDistSlider = document.getElementById('coh-dist-slider')
-    const cohesionSlider = document.getElementById('cohesion-slider')
+    for (const p of this.popouts) {
+      // Hidden tag panels: the ribbon stands in for them
+      if (p.isTag && p.state === 'towed') continue
 
-    speedSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('speed-value').textContent = value
-      this.gpgpu.setSpeed(value, value * 0.25)
-    })
+      let k = 0
+      if (p.state === 'toFront' || p.state === 'toTowed') {
+        p.t = Math.min(p.t + delta / this.popoutDuration, 1)
+        // Ease in-out cubic
+        k = p.t < 0.5 ? 4 * p.t ** 3 : 1 - (-2 * p.t + 2) ** 3 / 2
+      }
 
-    sizeSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('size-value').textContent = value.toFixed(1)
-      this.fishMesh.setScale(value)
-    })
+      if (p.state === 'front' || p.state === 'toFront') {
+        this._towedPose(p, from)
+        this._frontPose(p, to)
+        if (p.state === 'front') k = 1
+      } else {
+        this._frontPose(p, from)
+        this._towedPose(p, to)
+        if (p.state === 'towed') k = 1
+      }
 
-    sepDistSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('sep-dist-value').textContent = value.toFixed(1)
-      this.gpgpu.setSeparationDistance(value)
-    })
+      p.object.position.lerpVectors(from.position, to.position, k)
+      p.object.quaternion.slerpQuaternions(from.quaternion, to.quaternion, k)
+      p.object.scale.setScalar(from.scale + (to.scale - from.scale) * k)
 
-    separationSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('separation-value').textContent = value.toFixed(1)
-      this.gpgpu.setSeparation(value)
-    })
-
-    alignDistSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('align-dist-value').textContent = value.toFixed(1)
-      this.gpgpu.setAlignmentDistance(value)
-    })
-
-    alignmentSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('alignment-value').textContent = value.toFixed(1)
-      this.gpgpu.setAlignment(value)
-    })
-
-    cohDistSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('coh-dist-value').textContent = value.toFixed(1)
-      this.gpgpu.setCohesionDistance(value)
-    })
-
-    cohesionSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('cohesion-value').textContent = value.toFixed(1)
-      this.gpgpu.setCohesion(value)
-    })
-
-    // Mode buttons
-    const modeOff = document.getElementById('mode-off')
-    const modeRepel = document.getElementById('mode-repel')
-    const modeAttract = document.getElementById('mode-attract')
-    const modeButtons = [modeOff, modeRepel, modeAttract]
-
-    const setActiveMode = (mode) => {
-      this.interactionMode = mode
-      modeButtons.forEach((btn, i) => {
-        btn.classList.toggle('active', i === mode)
-      })
+      if (p.t >= 1 && p.state === 'toFront') {
+        p.state = 'front'
+        this.fishTags.setRopeVisible(p.ropeIndex, false)
+      } else if (p.t >= 1 && p.state === 'toTowed') {
+        p.state = 'towed'
+        if (p.isTag) {
+          p.element.style.visibility = 'hidden'
+          this.fishTags.setLabelVisible(p.ropeIndex, true)
+        }
+      }
     }
+  }
 
-    modeOff.addEventListener('click', () => setActiveMode(0))
-    modeRepel.addEventListener('click', () => setActiveMode(1))
-    modeAttract.addEventListener('click', () => setActiveMode(2))
-
-    // Strength slider
-    const strengthSlider = document.getElementById('strength-slider')
-    strengthSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value)
-      document.getElementById('strength-value').textContent = value.toFixed(1)
-      this.interactionStrength = value
-    })
-
-    // Initial speed animation: start fast, then slow down
+  initSpeedIntro() {
+    // Start fast, then slow down
     this.gpgpu.setSpeed(40, 10)
     this.speedDownTimeout = setTimeout(() => {
-      if (!this.disposed) this.animateSpeedDown(40, 10, 1000, speedSlider)
+      if (!this.disposed) this.animateSpeedDown(40, 10, 1000)
     }, 3000)
   }
 
-  animateSpeedDown(from, to, duration, slider) {
+  animateSpeedDown(from, to, duration) {
     const startTime = performance.now()
     const animate = (currentTime) => {
       const elapsed = currentTime - startTime
@@ -567,8 +397,6 @@ export class Scene {
       const currentSpeed = from + (to - from) * eased
 
       this.gpgpu.setSpeed(currentSpeed, currentSpeed * 0.25)
-      slider.value = currentSpeed
-      document.getElementById('speed-value').textContent = Math.round(currentSpeed)
 
       if (progress < 1 && !this.disposed) {
         requestAnimationFrame(animate)
@@ -580,6 +408,34 @@ export class Scene {
   addEventListeners() {
     window.addEventListener('resize', this._onResize)
     window.addEventListener('mousemove', this._onMouseMove)
+
+    // Drag to orbit: the scene follows the pointer, like grabbing it.
+    // A drag that moved is not a click (so it won't open or close popouts).
+    const canvas = this.renderer.domElement
+    canvas.style.touchAction = 'none'
+    this._drag = { active: false, moved: false, x: 0, y: 0 }
+    this._onPointerDown = (e) => {
+      this._drag = { active: true, moved: false, x: e.clientX, y: e.clientY }
+      canvas.setPointerCapture(e.pointerId)
+    }
+    this._onPointerMove = (e) => {
+      const d = this._drag
+      if (!d.active) return
+      const dx = e.clientX - d.x
+      const dy = e.clientY - d.y
+      if (!d.moved && Math.hypot(dx, dy) < 5) return
+      d.moved = true
+      d.x = e.clientX
+      d.y = e.clientY
+      this.orbit(-dx, -dy)
+    }
+    this._onPointerUp = () => {
+      this._drag.active = false
+    }
+    canvas.addEventListener('pointerdown', this._onPointerDown)
+    canvas.addEventListener('pointermove', this._onPointerMove)
+    canvas.addEventListener('pointerup', this._onPointerUp)
+    canvas.addEventListener('pointercancel', this._onPointerUp)
   }
 
   onMouseMove(event) {
@@ -628,18 +484,19 @@ export class Scene {
   //   vertical   → pitch around camera's local X (right)  → pole-to-pole on current meridian
   //   horizontal → yaw   around camera's local Y (up)     → orbit along current "equator"
   orbit(deltaX, deltaY) {
+    if (this.popouts.some((p) => p.state !== 'towed')) return
+
     const sensitivity = 0.003
     const cappedDY = Math.sign(deltaY) * Math.min(Math.abs(deltaY), 100)
     const cappedDX = Math.sign(deltaX) * Math.min(Math.abs(deltaX), 100)
 
     const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.cam.targetOrientation)
-    const worldY   = new THREE.Vector3(0, 1, 0)
+    const camUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(this.cam.targetOrientation)
 
     const vertQuat  = new THREE.Quaternion().setFromAxisAngle(camRight, cappedDY * sensitivity)
-    const horizQuat = new THREE.Quaternion().setFromAxisAngle(worldY,   cappedDX * sensitivity)
+    const horizQuat = new THREE.Quaternion().setFromAxisAngle(camUp,    cappedDX * sensitivity)
 
     this.cam.targetOrientation.premultiply(horizQuat).premultiply(vertQuat)
-    this.accumulatedTheta += cappedDY * sensitivity
   }
 
   animate() {
@@ -655,6 +512,9 @@ export class Scene {
     this.cam.orientation.slerp(this.cam.targetOrientation, lerpFactor)
     this._updateCameraPosition()
 
+    // Tags read the previous step's positions, so update them before the next step
+    if (this.fishTags) this.fishTags.update(delta)
+
     // Update GPGPU simulation
     if (this.gpgpu) {
       this.gpgpu.update(delta, elapsed)
@@ -666,7 +526,7 @@ export class Scene {
     }
 
     // Update whale circular orbit
-    this.whaleAngle += delta * 0.35
+    this.whaleAngle += delta * 0.175
     const wr = this.whaleOrbitRadius
     this.whalePos.set(
       Math.cos(this.whaleAngle) * wr,
@@ -681,46 +541,12 @@ export class Scene {
         Math.sin(this.whaleAngle + 0.01) * wr
       )
     }
-    if (this.whaleAnimMixer) this.whaleAnimMixer.update(delta)
+    if (this.whaleAnimMixer) this.whaleAnimMixer.update(delta * 0.5) // tail beat matches the slower swim
     if (this.gpgpu) this.gpgpu.setPredatorPosition(this.whalePos)
 
     this.renderer.render(this.scene, this.camera)
 
-    // Place CSS3D content relative to camera forward direction based on accumulated scroll depth.
-    if (this.contentObjects?.length) {
-      const { contentRadius, visibleWindow } = this._panelCfg
-
-      const camFwd   = this.camera.position.clone().normalize()
-      const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.cam.orientation)
-
-      for (const item of this.contentObjects) {
-        let depthDiff
-        if (item.loop) {
-          const period = item.period ?? Math.PI * 2
-          const phase = ((this.accumulatedTheta - item.depth) % period + period) % period
-          // Wrap to [-period/2, period/2] so nearest occurrence is always used
-          depthDiff = phase <= period / 2 ? -phase : period - phase
-        } else {
-          depthDiff = item.depth - this.accumulatedTheta
-        }
-        const isVisible = Math.abs(depthDiff) < visibleWindow
-
-        for (const el of item.elements) {
-          el.style.visibility = isVisible ? '' : 'hidden'
-        }
-
-        if (isVisible) {
-          item.objects.forEach((obj, i) => {
-            const angle = depthDiff + item.stripAlphas[i]
-            const offsetQuat = new THREE.Quaternion().setFromAxisAngle(camRight, angle)
-            const stripDir   = camFwd.clone().applyQuaternion(offsetQuat)
-
-            obj.position.copy(stripDir.clone().multiplyScalar(contentRadius))
-            obj.quaternion.copy(this.cam.orientation)
-          })
-        }
-      }
-    }
+    this.updatePopouts(delta)
 
     if (this.cssRenderer) this.cssRenderer.render(this.cssScene, this.camera)
   }
@@ -735,14 +561,26 @@ export class Scene {
 
     // Cancel pending timers
     clearTimeout(this.speedDownTimeout)
+    clearTimeout(this.cardAutoCloseTimeout)
 
     // Remove event listeners (same references as registered)
     window.removeEventListener('resize', this._onResize)
     window.removeEventListener('mousemove', this._onMouseMove)
+    const canvas = this.renderer?.domElement
+    if (canvas) {
+      canvas.removeEventListener('pointerdown', this._onPointerDown)
+      canvas.removeEventListener('pointermove', this._onPointerMove)
+      canvas.removeEventListener('pointerup', this._onPointerUp)
+      canvas.removeEventListener('pointercancel', this._onPointerUp)
+    }
 
     // Dispose GPGPU
     if (this.gpgpu) {
       this.gpgpu.dispose()
+    }
+
+    if (this.fishTags) {
+      this.fishTags.dispose()
     }
 
     // Dispose fish mesh
@@ -780,6 +618,10 @@ export class Scene {
       })
     }
 
+    if (this._onCanvasClick) {
+      this.renderer.domElement.removeEventListener('click', this._onCanvasClick)
+    }
+
     // Dispose CSS3D renderer
     if (this.cssRenderer) {
       this.cssRenderer.domElement.remove()
@@ -790,12 +632,6 @@ export class Scene {
     if (this.renderer) {
       this.renderer.dispose()
       this.renderer.domElement.remove()
-    }
-
-    // Remove UI
-    const controlContainer = document.getElementById('control-container')
-    if (controlContainer) {
-      controlContainer.remove()
     }
   }
 }
