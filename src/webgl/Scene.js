@@ -29,9 +29,8 @@ export class Scene {
 
     // Quaternion-based camera orbit: camera always looks at origin from radius 85.
     // orientation/targetOrientation encode both position and roll on the sphere.
-    const _heroQ = this._computeLookAtQuat(new THREE.Vector3(
-      Math.sin(Math.PI * 0.18), Math.cos(Math.PI * 0.18), 0
-    ))
+    // Start level with the whale's orbit (y = 0), so it swims horizontally across the screen
+    const _heroQ = this._computeLookAtQuat(new THREE.Vector3(0, 0, 1))
     this.cam = {
       orientation:       _heroQ.clone(),
       targetOrientation: _heroQ.clone(),
@@ -153,7 +152,8 @@ export class Scene {
   }
 
   initWhale() {
-    this.whaleAngle = 0
+    // Start front-right of the center, heading left across the view
+    this.whaleAngle = Math.PI / 2 - 0.6
     this.whalePos   = new THREE.Vector3()
     this.whaleMesh  = null
     this.whaleAnimMixer = null
