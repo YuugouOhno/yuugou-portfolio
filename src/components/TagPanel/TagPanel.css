@@ -1,0 +1,85 @@
+/* No overflow:hidden on this element: on a 3D-transformed element it breaks hit-testing in Chrome */
+.tag-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--pad);
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+  border-radius: 24px;
+  border: 1px solid transparent;
+  background: transparent;
+  pointer-events: auto;
+  visibility: hidden;
+  transition: background 0.8s ease, border-color 0.8s ease, box-shadow 0.8s ease;
+}
+
+.tag-panel.is-open {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.tag-panel-title {
+  flex: none;
+  height: var(--title-line);
+  font-size: var(--title-font);
+  line-height: var(--title-line);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tag-panel-body {
+  flex: 1;
+  min-height: 0;
+  margin-top: 20px;
+  overflow-y: auto;
+  font-size: 15px;
+  line-height: 1.9;
+  color: rgba(255, 255, 255, 0.85);
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.tag-panel.is-open .tag-panel-body {
+  opacity: 1;
+}
+
+.tag-panel-body p + p {
+  margin-top: 1em;
+}
+
+.tag-panel-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: color 0.2s, opacity 0.3s;
+}
+
+.tag-panel.is-open .tag-panel-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tag-panel-close:hover {
+  color: #fff;
+}
+
+/* In front, long titles wrap and keep clear of the close button */
+.tag-panel.is-open .tag-panel-title {
+  height: auto;
+  padding-right: 32px;
+  white-space: normal;
+}

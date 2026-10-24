@@ -133,6 +133,18 @@ export class GPGPUSimulation {
     uniforms.uCohesionDistance = { value: 15.0 }
 
     uniforms.uSeparationWeight = { value: 1.5 }
+
+    // Body overlap (any group)
+    uniforms.uBodyDistance = { value: 0.5 }
+    uniforms.uBodyWeight = { value: 12.0 }
+    uniforms.uBodyMax = { value: 25.0 }
+
+    // Tag-towing boids sit right after the sharks
+    const sharkCount = this.config.sharkCount || 0
+    uniforms.uTagStart = { value: sharkCount }
+    uniforms.uTagEnd = { value: sharkCount + (this.config.tagCount || 0) }
+    uniforms.uTagSeparationDistance = { value: 8.0 }
+    uniforms.uTagSeparationWeight = { value: 1.5 }
     uniforms.uAlignmentWeight = { value: 1.0 }
     uniforms.uCohesionWeight = { value: 1.0 }
 
