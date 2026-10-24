@@ -11,9 +11,11 @@ export const tags = [
 
   // 所属・活動
   { title: 'お茶の水女子大学附属', body: '' },
-  { title: '中学公式テニス部', body: '' },
+  { title: '中学硬式テニス部', body: '' },
   { title: '高校ジャグリング部', body: '' },
   { title: '早稲田大学', body: '' },
+  { title: '創造理工学部', body: '' },
+  { title: '環境資源工学科', body: '' },
   { title: '伊坪研究室', body: '' },
   { title: '産総研GZR', body: '' },
   { title: 'DeNA', body: '' },
@@ -49,6 +51,13 @@ export const tags = [
   { title: '手作りの自動ドア', body: '' },
   { title: 'ビンゴが苦手', body: '' },
   { title: 'アンチ靴下', body: '' },
+  { title: 'NISA利確', body: '' },
+  { title: '暑さが弱点', body: '' },
+  { title: '冷房ラブ', body: '' },
+  { title: '三半規管が弱い', body: '' },
+  { title: '手作り餃子', body: '' },
+  { title: 'おせち', body: '' },
+  { title: '季節イベントガチ勢', body: '' },
 
   // 47都道府県（全部行った）
   { title: '北海道', body: '' },
