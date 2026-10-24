@@ -2,7 +2,8 @@ import * as THREE from 'three'
 
 // Tags towed behind specific boids: a rope from the tail, then the word as a
 // flexible ribbon that keeps following the rope (it twists and shows its back).
-// Boid positions live on the GPU, so the first texture row is read back each frame.
+// Boid positions live on the GPU, so the texture rows holding the tagged boids
+// are read back each frame.
 // Call update() before the simulation step: it reads the previous step's result
 // (already finished, so no stall) and extrapolates by velocity to catch up.
 export class FishTags {
@@ -20,12 +21,16 @@ export class FishTags {
     this.labelHeight = 1.6
     this.stiffness = 2.5 // how fast the rope straightens behind the fish (1/s)
 
+    // Read whole rows (row-major, so boid i sits at i * 4) up to the last tagged boid
     const width = gpgpu.textureSize
-    this.readWidth = Math.min(width, startIndex + tags.length)
-    this.posBuffer = new Float32Array(this.readWidth * 4)
-    this.velBuffer = new Float32Array(this.readWidth * 4)
+    const count = Math.min(tags.length, width * width - startIndex)
+    const last = startIndex + count
+    this.readHeight = Math.ceil(last / width)
+    this.readWidth = this.readHeight > 1 ? width : last
+    this.posBuffer = new Float32Array(this.readWidth * this.readHeight * 4)
+    this.velBuffer = new Float32Array(this.readWidth * this.readHeight * 4)
 
-    this.items = tags.slice(0, this.readWidth - startIndex).map((text, i) =>
+    this.items = tags.slice(0, count).map((text, i) =>
       this.createItem(text, startIndex + i)
     )
   }
@@ -153,8 +158,8 @@ export class FishTags {
 
     const posRT = this.gpgpu.gpuCompute.getCurrentRenderTarget(this.gpgpu.positionVariable)
     const velRT = this.gpgpu.gpuCompute.getCurrentRenderTarget(this.gpgpu.velocityVariable)
-    this.renderer.readRenderTargetPixels(posRT, 0, 0, this.readWidth, 1, this.posBuffer)
-    this.renderer.readRenderTargetPixels(velRT, 0, 0, this.readWidth, 1, this.velBuffer)
+    this.renderer.readRenderTargetPixels(posRT, 0, 0, this.readWidth, this.readHeight, this.posBuffer)
+    this.renderer.readRenderTargetPixels(velRT, 0, 0, this.readWidth, this.readHeight, this.velBuffer)
 
     const pos = new THREE.Vector3()
     const back = new THREE.Vector3()
