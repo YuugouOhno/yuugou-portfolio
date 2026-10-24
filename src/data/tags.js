@@ -29,6 +29,8 @@ export const tags = [
   { title: 'LCA', body: '' },
   { title: '環境評価', body: '' },
   { title: 'スマートメータ', body: '' },
+  { title: 'AAAIワークショップ', body: '' },
+  { title: 'フィラデルフィア', body: '' },
 
   // 好き・趣味
   { title: 'コカコーラ過激派', body: '' },
