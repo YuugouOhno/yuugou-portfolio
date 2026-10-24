@@ -4,6 +4,7 @@ export const tags = [
   // 自分
   { title: '大野優剛', body: '' },
   { title: 'YuugouOhno', body: '' },
+  { title: 'YuugouOhnoのスペルはYuugouOhno', body: '' },
   { title: 'Software Engineer', body: '' },
   { title: '2001年生まれ', body: '' },
   { title: 'ENTP', body: '' },
